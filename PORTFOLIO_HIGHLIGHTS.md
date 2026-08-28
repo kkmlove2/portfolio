@@ -7,7 +7,42 @@
 
 **기술 스택** — Kotlin, Jetpack Compose, Coroutines/Flow, Hilt, Navigation Compose, ExoPlayer 계열 재생 엔진, Room/ContentProvider, 멀티모듈 Gradle
 
-**규모** — 라이브 TV 모듈 약 50개 파일, 설정 모듈 약 57개 파일, 도메인 모듈 별도 분리
+**구성** — 재생·스트리밍·도메인 제공자를 각각 독립 라이브러리 모듈로 분리한 멀티모듈 구조
+
+---
+
+## 아키텍처 개요 — 모듈 경계와 의존성 방향
+
+기능을 추가하기 전에 **의존성이 흐르는 방향**을 먼저 고정했습니다.
+
+```
+                        ┌──────────┐
+                        │  :app    │   화면 조립 · 네비게이션 · DI 진입점
+                        └────┬─────┘
+             ┌───────────────┼───────────────┐
+             ▼               ▼               ▼
+        ┌────────┐     ┌──────────┐    ┌───────────┐
+        │ :live  │     │ :stream  │    │ :playback │   기능 계층 (서로 참조하지 않음)
+        └───┬────┘     └────┬─────┘    └─────┬─────┘
+            └───────────────┼────────────────┘
+                    ┌───────┴────────┐
+                    ▼                ▼
+               ┌─────────┐     ┌────────────┐
+               │  :core  │     │ :provider  │   기반 계층 (프로젝트 모듈 의존 없음)
+               └─────────┘     └────────────┘
+```
+
+**규칙 세 가지**
+
+1. 기반 계층(`:core`, `:provider`)은 **어떤 프로젝트 모듈도 참조하지 않습니다.** Gradle 의존성 블록이 비어 있습니다.
+2. 기능 계층(`:live`, `:stream`, `:playback`)은 **서로를 참조하지 않습니다.** 세 모듈은 형제이고, 조립은 오직 `:app`에서 일어납니다.
+3. 어떤 모듈도 `:app`을 참조하지 않습니다.
+
+세 규칙이 지켜지므로 **순환 의존이 구조적으로 발생할 수 없습니다.**
+기능 모듈끼리 우발적으로 결합되면 코드 리뷰가 아니라 **Gradle 빌드 단계에서 컴파일 에러로** 드러납니다.
+
+실무적인 이득도 있었습니다. 스트리밍 프로토콜 로직을 고쳐도 재생 모듈은 재컴파일 대상이 아니라
+빌드 캐시를 그대로 재사용합니다.
 
 ---
 
@@ -24,7 +59,7 @@
 - 사업자 전용 포털
 - 방송 튜너(하드웨어)
 
-화면과 재생 로직이 이 차이를 알아야 한다면 분기문이 앱 전체로 번집니다.
+화면과 재생 로직이 이 차이를 직접 알아야 한다면 분기문이 앱 전체로 번집니다.
 
 ### 설계
 
@@ -55,7 +90,7 @@ abstract class Channel {
 ### 합성 식별자를 값 객체로
 
 채널 하나를 특정하려면 `서버 + 그룹 + 채널 + 스트림종류` 네 값이 모두 필요합니다.
-이걸 파라미터로 흩어 들고 다니면 순서 실수와 누락이 계속 생깁니다.
+네 값을 개별 파라미터로 들고 다니면 인자 순서 실수와 누락이 반복됩니다.
 
 ```kotlin
 open class Uid : Parcelable {
@@ -82,7 +117,7 @@ open class Uid : Parcelable {
 
 - **정규 문자열 표현**을 값 객체가 직접 소유 → DB·IPC·로그 전 구간에서 동일한 키 표현 사용
 - 역직렬화는 팩토리가 **토큰 개수로 하위 타입을 판별**해 복원
-- `this::class == other::class` 비교로 기본 Uid와 확장 Uid가 동등 비교에서 섞이는 사고를 차단
+- `this::class == other::class` 조건으로 기본 Uid와 확장 Uid가 서로 동등하다고 판정되는 사고를 차단
 
 ### 성과
 
@@ -100,7 +135,7 @@ open class Uid : Parcelable {
 ### 문제
 
 채널 관리 로직이 한 클래스에 모이면 수천 줄이 되고, 호출부는 **필요 없는 권한까지 전부** 갖게 됩니다.
-"즐겨찾기 화면이 실수로 튜너 스캔을 호출"하는 부류의 사고가 컴파일 단계에서 걸리지 않습니다.
+"즐겨찾기 화면이 실수로 튜너 스캔을 호출"하는 부류의 사고가 컴파일 단계에서 걸러지지 않습니다.
 
 ### 설계
 
@@ -205,7 +240,7 @@ class LiveData {
 
 ### 문제
 
-24시간 × N채널 편성표를 다뤄야 했습니다. 요구사항이 이랬습니다.
+24시간 × N채널 편성표를 다뤄야 했고, 요구사항은 다음과 같았습니다.
 
 - 세로 스크롤(채널) + 가로 스크롤(시간) 동시 지원
 - **핀치 줌으로 시간 축 배율 변경** (5분 단위 ~ 1시간 단위)
@@ -252,7 +287,7 @@ fun zoom(zoomFactor: Float, anchorScreenXPx: Float, density: Density) {
 ### 4-2. 관성 스크롤 중 좌표계 확장
 
 왼쪽으로 플링하는 도중 이전 날짜가 로드되면 **전체 좌표계가 오른쪽으로 밀립니다.**
-애니메이션 값을 그대로 두면 스크롤이 0px 벽에 부딪혀 멈춰버립니다.
+애니메이션 값을 그대로 두면 스크롤이 왼쪽 한계(0px)에 부딪혀 멈춰버립니다.
 
 애니메이션 값은 건드리지 않고 **누적 보정값(shift)** 으로 해결했습니다.
 
@@ -276,7 +311,7 @@ fun shiftFlingX(offsetPx: Float) { flingXShift += offsetPx }
 ### 4-3. 줌과 스크롤 동시 보간
 
 "현재 시각으로 이동"은 위치와 배율을 **둘 다** 바꿔야 합니다.
-두 애니메이션을 따로 돌리면 화면이 튀어서, 진행률 0→1 하나로 두 값을 동시에 보간했습니다.
+두 애니메이션을 따로 실행하면 화면이 튀기 때문에, 진행률 0→1 하나로 두 값을 동시에 보간했습니다.
 
 ```kotlin
 anim.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow)) {
@@ -405,11 +440,11 @@ class ReorderableLazyGridState(...) : ReorderableState<LazyGridItemInfo>(...) {
 ### 프로젝트 고유 요구사항
 
 `canDragOver` 콜백으로 **이동 가능 영역을 제한**했습니다.
-고정 그룹과 일반 그룹이 하나의 리스트에 섞여 있어서, 고정 그룹을 일반 영역으로 끌어다 놓거나
-그 반대가 되면 안 됩니다. 스티키 헤더 위로 드롭하는 것도 막아야 합니다.
+고정 그룹과 일반 그룹이 하나의 리스트에 섞여 있어서, 두 영역을 넘나드는 이동과 스티키 헤더 위로의
+드롭을 모두 차단해야 합니다.
 
 > 이 추상화 패턴 자체는 오픈소스 드래그 정렬 라이브러리와 구조적으로 유사합니다.
-> 제 기여는 **그리드 지원 확장과 위 도메인 제약 조건 통합**입니다.
+> 제 기여는 **그리드 지원 확장과 앞서 설명한 도메인 제약 조건의 통합**입니다.
 
 **이력서 문장**
 > 제네릭과 추상 확장 프로퍼티로 서로 다른 레이아웃의 아이템 정보를 추상화해, 드래그 정렬
@@ -471,7 +506,7 @@ enum class RestoreResult {
 ```
 
 실패 지점을 하나의 `Boolean`이 아니라 **어디서 왜 실패했는지**가 남는 열거형으로 표현해,
-사용자에게 보여줄 메시지와 로그 분석 모두를 커버했습니다.
+사용자에게 보여줄 메시지 분기와 사후 로그 분석을 모두 처리할 수 있게 했습니다.
 
 ### 지연 실행으로 단계 조립
 
@@ -565,7 +600,7 @@ class Connector(
 ```
 
 호출부는 `Connector(onAdded = {...}, onInitialized = {...}, ...)` 한 번으로 전체 흐름을 선언하고,
-진행률은 `connector.progress`를 collect 하면 끝입니다.
+진행률은 `connector.progress`를 구독하기만 하면 됩니다.
 
 ---
 
@@ -573,7 +608,7 @@ class Connector(
 
 ### 문제
 
-라이브 스포츠 중계에서 스트리밍 지연이 누적되면 실제 경기보다 늦게 봅니다.
+라이브 스포츠 중계에서 스트리밍 지연이 누적되면 실제 경기보다 늦은 장면을 보게 됩니다.
 버퍼가 충분히 쌓였을 때 재생 속도를 미세하게 올려 **라이브 엣지에 따라붙는** 기능이 필요했습니다.
 
 단순히 속도를 올리면 버퍼가 고갈돼 재버퍼링이 발생하므로, 감시·발동·쿨다운을 분리해야 합니다.
@@ -582,10 +617,12 @@ class Connector(
 
 ```kotlin
 class SportModeMgr(private val pb: PlaybackControl, private val liveData: LiveData) {
-    private const val INTERVAL_CHECK_BUFFER = 1_000L            // 평상시 감시 주기
-    private const val INTERVAL_CHECK_BUFFER_IN_RUNNING = 100L   // 동작 중엔 촘촘하게
-    private const val INTERVAL_COOLDOWN = 10_000L               // 재진입 방지
-    private const val MIN_BUFFERED_TIMES_MS = 4_000L            // 발동 임계값
+    companion object {
+        private const val INTERVAL_CHECK_BUFFER = 1_000L            // 평상시 감시 주기
+        private const val INTERVAL_CHECK_BUFFER_IN_RUNNING = 100L   // 동작 중엔 촘촘하게
+        private const val INTERVAL_COOLDOWN = 10_000L               // 재진입 방지
+        private const val MIN_BUFFERED_TIMES_MS = 4_000L            // 발동 임계값
+    }
 
     // 역할별로 Job을 분리 — 서로 독립적으로 취소 가능
     private var checkBufferJob: Job? = null   // 버퍼 감시
@@ -655,12 +692,328 @@ fun CustomSwitch(width: Dp, height: Dp, enabled: Boolean, isOn: MutableState<Boo
 
 ---
 
+## 12. Repository + Policy Delegate — 프로토콜 구현을 저장소 뒤로 격리
+
+### 문제
+
+VOD/시리즈는 프로토콜마다 **페이지네이션 방식 자체가 다릅니다.** 어떤 프로토콜은 서버가 페이지를
+끊어 주고, 어떤 프로토콜은 전체를 내려받아 로컬 DB에서 잘라야 합니다. 정렬·필터 옵션도 지원 범위가
+다릅니다. 이걸 화면이 알게 되면 목록 화면마다 프로토콜 분기가 생깁니다.
+
+### 설계 — 정책을 추상 타입 하나로 통일
+
+```kotlin
+class StreamRepository @Inject constructor(
+    private val database: VodDatabase,
+    private val manager: ServerProviderMgr,
+
+    // 프로토콜별 정책 — 전부 PolicyDelegate 하위 타입
+    private val stalker: StalkerPolicyDelegate,
+    private val xtream: XtreamPolicyDelegate,
+    private val playlist: PlaylistPolicyDelegate,
+
+    // 저장소 기반 가상 카테고리(즐겨찾기 · 시청기록 · 최근)
+    private val mixed: MixedPolicyDelegate,
+
+    // 외부 메타데이터 소스
+    private val tmdb: TmdbPolicyDelegate,
+    private val external: ExternalPolicyDelegate,
+
+    private val preference: StreamPreference
+)
+```
+
+```kotlin
+/*
+ * Delegate 는 DB 가 올려주는 ENTITY 를 다룬다.
+ * ENTITY -> UI 도메인 모델 변환은 Repository 의 책임.
+ */
+abstract class PolicyDelegate(val database: VodDatabase) {
+
+    internal abstract fun getStreamByCategory(
+        category: Category,
+        optionSource: OptionSource
+    ): Flow<PagingData<Stream>>
+
+    internal abstract fun search(
+        query: String, server: StreamServer, streamType: StreamType
+    ): Flow<PagingData<Stream>>
+
+    // 프로토콜이 지원하는 정렬/필터만 노출
+    internal abstract fun getSortOptions(streamType: StreamType): List<Option.Sort>
+    internal abstract fun getFilterGroupOptions(streamType: StreamType): List<Option.Filter.Group>
+    internal abstract fun getDefaultOptionSource(identifier: Identifier): OptionSource
+
+    // ENTITY -> 도메인 모델
+    internal abstract fun buildStream(...): Stream
+}
+```
+
+**설계 포인트**
+
+- **반환 타입을 `Flow<PagingData<Stream>>` 하나로 통일했습니다.** 서버 페이징이든 로컬 DB 페이징이든
+  화면이 받는 것은 동일한 Paging 스트림입니다. 목록 화면에 프로토콜 분기가 존재하지 않습니다.
+- **`internal` 한정자로 모듈 경계를 명시했습니다.** delegate API 전체가 모듈 내부이고, `:app`에서
+  보이는 것은 `StreamRepository` 하나뿐입니다. 프로토콜 구현이 앱 쪽으로 새어 나갈 수 없습니다.
+- **계층 책임을 주석이 아니라 타입으로 못 박았습니다.** delegate는 DB Entity까지, Entity → 도메인
+  모델 변환은 Repository가 담당합니다. 구현체가 늘어도 경계가 흐려지지 않습니다.
+- **생성자 주입만 사용했습니다.** 대체 구현을 끼워 넣는 지점이 생성자 하나로 고정됩니다.
+
+### DI 스코프를 의도적으로 좁힘
+
+```kotlin
+@InstallIn(ActivityRetainedComponent::class)   // ViewModel 수명에 묶음
+@Module
+internal object StreamModule { ... }
+```
+
+무조건 `SingletonComponent`에 넣지 않고, 이 의존성들이 실제로 필요한 수명인 **ViewModel 수명**에
+맞췄습니다. 모듈 자체도 `internal`이라 다른 모듈에서 이 바인딩을 가져다 쓸 수 없습니다.
+
+**이력서 문장**
+> VOD 도메인을 Repository + 프로토콜별 Policy Delegate 구조로 설계하고, 페이징 방식이 상이한
+> 프로토콜들을 단일 `Flow<PagingData<T>>` 계약으로 통일. `internal` 가시성으로 모듈 경계를 강제해
+> 프로토콜 구현이 앱 계층에 노출되지 않도록 격리
+
+---
+
+## 13. 능력(capability) 인터페이스로 상세 모델의 API 표면 분해
+
+### 문제
+
+VOD 상세 화면 모델은 필드가 20개가 넘고, 즐겨찾기·시청기록·화질·재생정보 같은 **성격이 다른 동작**이
+한 클래스에 모입니다. 게다가 프로토콜에 따라 **지원하지 않는 기능**이 있습니다.
+
+### 설계 — 관심사별 인터페이스 + 널 가능 헬퍼
+
+동작을 관심사 단위 인터페이스로 쪼개고, 상세 모델이 필요한 것만 구현하게 했습니다.
+
+```kotlin
+interface SupportFavorite {
+    val favoriteHelper: FavoriteHelper?
+    suspend fun recordFavorite(isRecord: Boolean)
+    suspend fun isFavorite(): Boolean
+    fun isFavoriteFlow(): Flow<Boolean>
+}
+
+interface SupportHistory {
+    val historyHelper: HistoryHelper?
+    suspend fun recordHistory(position: Long, duration: Long, recordTime: Long)
+    suspend fun removeHistory()
+    fun getHistoryFlow(): Flow<History>
+}
+
+interface SupportQuality  { suspend fun getQualityFlow(): Flow<List<Quality>>? }
+interface SupportPlayback { suspend fun getPlaybackFlow(): Flow<Playback> }
+```
+
+**지원 여부는 헬퍼의 널 가능성으로 표현**하고, 미지원 시의 기본 동작을 모델이 직접 정의했습니다.
+
+```kotlin
+data class Detail private constructor(
+    val identifier: Identifier,
+    ...
+    override val favoriteHelper: FavoriteHelper?,          // 미지원 프로토콜은 null
+    override val historyHelper: HistoryHelper? = null
+) : Parcelable, SupportFavorite, SupportHistory, SupportPlayback, SupportQuality {
+
+    // 스레드 정책을 모델이 소유 — 호출부가 IO 디스패처를 잊을 수 없다
+    override suspend fun recordFavorite(isRecord: Boolean) =
+        withContext(Dispatchers.IO) { favoriteHelper?.recordFavoriteInternal(isRecord) }
+
+    // 미지원이면 예외가 아니라 '비어 있는 스트림'으로 수렴
+    override fun isFavoriteFlow(): Flow<Boolean> =
+        favoriteHelper?.isFavoriteFlowInternal() ?: flowOf(false)
+}
+```
+
+### 생성 경로를 프로토콜별 팩토리로 고정
+
+```kotlin
+class Detail private constructor(...) {
+    companion object {
+        internal fun createByXtream(
+            stream: Stream, nativeStream: VodContentEntity?, nativeDetail: XtcDetail?,
+            historyHelper: HistoryHelper?, favoriteHelper: FavoriteHelper
+        ): Detail {
+            require(stream.identifier.protocol == Protocol.Xtream)   // 불변식 방어
+            ...
+        }
+        // createByStalker(...), createByPlaylist(...) — 프로토콜별 진입점
+    }
+}
+```
+
+생성자를 `private`으로 막고 **프로토콜별 명명 팩토리만** 열었습니다. 어떤 프로토콜의 상세인지가
+호출 지점의 함수 이름에 드러나고, `require`로 식별자와 팩토리가 어긋나는 조합을 런타임 초입에서
+잡습니다.
+
+**설계 포인트**
+
+- 화면은 `detail.isFavoriteFlow()`만 구독합니다. 지원 여부 분기가 화면에 없습니다.
+- `Dispatchers.IO` 전환을 모델 안에 가뒀습니다. 호출부에서 스레드를 잘못 쓸 여지를 없앴습니다.
+- 미지원을 예외가 아닌 **빈 값으로 수렴**시켜, 프로토콜이 늘어도 화면에 방어 코드가 늘지 않습니다.
+
+> **한계로 인정하는 부분** — 현재 `Detail`은 네 인터페이스를 모두 구현하고, 실제 지원 여부는
+> 헬퍼의 널 여부로만 판별됩니다. 능력을 타입으로 완전히 분리하면 `is SupportFavorite` 검사만으로
+> 판별이 가능해집니다. 면접에서 먼저 꺼낼 개선 지점으로 준비해 두고 있습니다.
+
+---
+
+## 14. URI 기반 합성 식별자 — 프로토콜마다 다른 키 조합을 한 타입으로
+
+### 문제
+
+VOD 쪽 식별자는 라이브 채널(1번 항목의 `Uid`)보다 복잡합니다. 영화는 `스트림 ID`까지면 되지만
+시리즈는 `시즌 · 에피소드`, 다시보기는 `catchup ID`, 다중 화질은 `quality ID`가 더 필요합니다.
+프로토콜마다 **필요한 키의 개수와 종류가 다릅니다.**
+
+필드를 전부 nullable로 선언하면 "이 조합에서 어떤 필드가 유효한지"를 아무도 모르게 됩니다.
+
+### 설계 — 내부 표현을 `Uri` 하나로
+
+```kotlin
+class Identifier private constructor(private val source: Uri) : Parcelable {
+
+    /**
+     * {PROTOCOL}://{HOST}?server_id=..&stream_type=..&stream_id=..&season_id=..
+     * SCHEME - stalker, xtream, playlist
+     */
+
+    val protocol: Protocol     get() = Protocol.from(source.scheme!!)
+    val serverId: Int          get() = source.getQueryParameter(KEY_OF_SERVER_ID)?.toInt() ?: UNSET
+    val streamType: StreamType get() = StreamType.from(source.getQueryParameter(KEY_OF_STREAM_TYPE) ?: EMPTY)
+    val streamId: String       get() = source.getQueryParameter(KEY_OF_STREAM_ID) ?: EMPTY
+    val seasonId: String?      get() = source.getQueryParameter(KEY_OF_SEASON_ID)   // 시리즈에만 존재
+
+    // 생성 경로는 Builder 와 deserialize 둘뿐
+    class Builder(
+        private val protocol: Protocol = Protocol.Unknown,
+        private val serverId: Int = UNSET,
+        private val streamType: StreamType = StreamType.Unknown,
+        private val streamId: String = EMPTY,
+        ...
+    ) {
+        fun build(): Identifier = Identifier(Uri.Builder().apply { ... }.build())
+    }
+
+    companion object {
+        fun deserialize(identifierString: String) = Identifier(Uri.parse(identifierString))
+        val EMPTY_IDENTIFIER = Builder().build()
+    }
+}
+```
+
+**설계 포인트**
+
+- **필드를 늘리지 않고 키 조합을 확장합니다.** 새 개념(화질·다시보기)이 생겨도 쿼리 파라미터 키가
+  하나 늘 뿐, 기존 사용처는 영향을 받지 않습니다.
+- **문자열 표현이 곧 저장 표현입니다.** DB 컬럼, 딥링크, `Parcelable` 전달에 같은 값을 씁니다.
+  직렬화 포맷과 파서를 따로 관리하지 않습니다.
+- 생성자를 막고 `Builder`/`deserialize`만 열어 **반쯤 채워진 식별자**가 만들어지지 않게 했습니다.
+- `EMPTY_IDENTIFIER` 상수를 두어 초기 상태를 nullable 대신 값으로 표현했습니다.
+
+> **트레이드오프** — 프로퍼티 접근마다 쿼리 파라미터 파싱이 일어납니다. 목록 렌더링처럼 반복
+> 접근하는 경로에서는 지역 변수로 한 번만 읽도록 했습니다. 이 비용을 인지하고 선택한 설계입니다.
+
+---
+
+## 15. 재생 엔진 2종을 하나의 계약 뒤로 — internal 경계 + Factory + Facade
+
+### 문제
+
+지원해야 하는 코덱·컨테이너 범위가 넓어 **재생 엔진을 두 개** 사용합니다. 엔진마다 API가 전혀 다르고,
+트랙 선택 모델은 특히 차이가 큽니다. 화면이 엔진을 알면 재생 관련 코드 전부가 엔진에 묶입니다.
+
+### 설계
+
+```kotlin
+// 모듈 내부에만 존재하는 엔진 계약
+internal interface PlaybackController {
+    fun start(startTimeMs: Long, source: Source, retainSpeed: Boolean = false): Boolean
+    fun seekTo(position: Long): Long
+    fun resume(@ResumePauseChangeReason reason: Int)
+    fun pause(@ResumePauseChangeReason reason: Int)
+
+    fun getTracks(@TrackType trackType: Int): List<Track>
+    fun setTrack(track: Track): Boolean
+    fun isTrackOffSupported(@TrackType type: Int): Boolean
+
+    val playerView: View
+    var speed: Float
+    var aspectRatioMode: Int
+    val resolution: Pair<Int, Int>
+}
+
+internal class PlaybackControllerFactory {
+    fun setType(@ControllerType type: Int) = apply { this.type = type }
+    fun setContext(context: Context) = apply { this.context = context }
+
+    fun create(): PlaybackController = when (type) {
+        TYPE_EXO_PLAYER -> ExoControllerImpl(requireNotNull(context), playWhenReady)
+        TYPE_VLC_PLAYER -> VlcControllerImpl(requireNotNull(context))
+        else -> throw IllegalStateException("Unexpected value: $type")
+    }
+}
+```
+
+```kotlin
+// 모듈 밖으로 공개되는 것은 이 인터페이스 하나
+interface PlaybackSession {
+    fun initialize(context: Context)
+    fun release(context: Context)
+    fun start(...)
+    fun registerCallback(callback: PlaybackSessionCallback)
+    val playerView: View
+    var speed: Float
+    ...
+}
+```
+
+**설계 포인트**
+
+- **`internal`이 핵심입니다.** `PlaybackController`도 `PlaybackControllerFactory`도 엔진 구현체도
+  모듈 밖에서 **참조 자체가 불가능**합니다. 화면은 `PlaybackSession`만 알고, 어떤 엔진이 도는지
+  모릅니다. "엔진을 직접 만지지 말자"는 규약이 아니라 컴파일러가 강제하는 경계입니다.
+- 엔진 추가·교체 시 영향 범위가 **`create()`의 분기 한 줄과 새 구현 클래스**로 한정됩니다.
+- 엔진별 차이가 가장 큰 트랙 선택은 `TrackSelectorDelegate`로 한 겹 더 분리하고, 엔진의 트랙 타입과
+  도메인 트랙 타입을 양방향 변환 함수로 묶어 두었습니다.
+
+```kotlin
+interface TrackSelectorDelegateV2 {
+    companion object {
+        fun parseTrackTypeToRendererType(@TrackType trackType: Int): @C.TrackType Int = ...
+        fun parseRendererTypeToTrackType(rendererType: @C.TrackType Int): Int = ...
+        fun isTrackTypeSupported(@TrackType trackType: Int): Boolean = ...
+    }
+}
+```
+
+- 실행 중 켜고 끌 수 있어야 하는 부가 기능(오디오 포커스·시크 반복·속도 보정 등)은 공통 수명주기
+  인터페이스로 묶어, 세션이 일괄로 초기화·해제합니다.
+
+```kotlin
+interface FlexibleProvider {
+    fun initialize()
+    fun release()
+}
+```
+
+**이력서 문장**
+> 코덱 지원 범위가 다른 재생 엔진 2종을 단일 `PlaybackController` 계약과 Factory 뒤로 캡슐화하고,
+> `internal` 가시성으로 엔진 구현을 모듈 내부에 봉인. 상위 계층은 `PlaybackSession` Facade만 의존해
+> 엔진 교체 영향 범위를 팩토리 분기로 한정
+
+---
+
 ## 이력서 요약안
 
-프로젝트 한 줄 소개와 함께 **3~5개만** 골라 쓰는 것을 권합니다.
+이력서에는 프로젝트 한 줄 소개와 함께 **3~5개만** 골라 쓰는 것을 권합니다.
 
 > **상용 Android IPTV 플레이어 앱** — Kotlin, Jetpack Compose, Coroutines/Flow, Hilt, 멀티모듈
 >
+> - 기반·기능·조립 3계층 멀티모듈 구조를 설계하고 `internal` 가시성으로 모듈 경계를 강제해,
+>   프로토콜·재생 엔진 구현이 앱 계층에 노출되지 않고 순환 의존이 발생할 수 없도록 구성
 > - 규격이 상이한 5종 스트리밍 프로토콜을 단일 도메인 모델로 추상화하고, 합성 식별자를 정규
 >   문자열 직렬화가 가능한 값 객체로 설계해 DB·IPC·로그 전 구간의 키 표현을 통일
 > - Facade와 역할 기반 인터페이스 분리를 적용해 호출부가 필요한 권한만 갖도록 API 표면을 설계,
@@ -671,6 +1024,8 @@ fun CustomSwitch(width: Dp, height: Dp, enabled: Boolean, isOn: MutableState<Boo
 >   계약(`@Stable`)을 명시해 리컴포지션 성능 저하 해결
 > - 암호화 백업 복원을 다단계 코루틴 파이프라인으로 설계, 비가역 구간의 취소를 차단하는
 >   단계별 취소 정책으로 중단 시 데이터 정합성 손상 방지
+> - 코덱 지원 범위가 다른 재생 엔진 2종을 단일 계약과 Factory 뒤로 캡슐화해, 엔진 교체 영향
+>   범위를 팩토리 분기로 한정
 
 ---
 
@@ -684,7 +1039,13 @@ fun CustomSwitch(width: Dp, height: Dp, enabled: Boolean, isOn: MutableState<Boo
 | 4 | "왜 LazyRow를 쓰지 않았나요?" | X축 배율 변경과 좌표계 확장이 불가능 |
 | 5 | "Compose 안정성이 뭔가요? 왜 인터페이스가 unstable인가요?" | 컴파일러 메트릭 확인 방법까지 |
 | 6 | "오픈소스 라이브러리를 쓰지 않은 이유는?" | 그리드 지원과 도메인 제약이 필요했음 |
+| 7 | "수백 개 항목에서 토글 하나 눌렀을 때 어디가 다시 그려지나요?" | 아이템 단위 StateFlow로 범위를 좁힌 근거 |
 | 8 | "복원 중 앱이 강제 종료되면 어떻게 되나요?" | 솔직한 현재 한계 + 개선안 |
+| 개요 | "모듈을 왜 이렇게 나눴나요? 순환 의존은 어떻게 막나요?" | 3계층 규칙과 Gradle이 강제한다는 점 |
+| 12 | "페이징 방식이 다른 프로토콜을 어떻게 한 타입으로 묶었나요?" | `Flow<PagingData<T>>` 통일과 `internal` 경계 |
+| 13 | "지원하지 않는 기능은 어떻게 처리하나요?" | 널 가능 헬퍼 + 빈 값 수렴, 그리고 개선안 |
+| 14 | "식별자를 왜 Uri로 표현했나요? 파싱 비용은?" | 확장성 vs 파싱 비용 트레이드오프 |
+| 15 | "재생 엔진을 바꾸면 어디를 고치나요?" | 팩토리 분기 + 새 impl로 한정된다는 점 |
 
 ---
 
@@ -698,5 +1059,9 @@ fun CustomSwitch(width: Dp, height: Dp, enabled: Boolean, isOn: MutableState<Boo
   제네릭이나 sealed 계층으로 대체 가능합니다.
 - **재생 상태의 `sealed` 미적용** — `PlaybackData` 계층은 `sealed`로 바꾸면 `when` 분기의
   누락을 컴파일러가 잡아줍니다.
+- **능력 인터페이스의 절반만 타입으로 표현** — 상세 모델이 `Support*` 인터페이스를 전부 구현하고
+  실제 지원 여부는 헬퍼의 널 여부로 판별합니다. 지원하는 인터페이스만 구현하도록 바꾸면
+  `is SupportFavorite` 검사만으로 판별이 끝납니다.
 - **테스트 부재** — 도메인 모델과 좌표 변환 로직은 순수 함수라 단위 테스트하기 좋은 구조인데
-  실제 테스트는 부족합니다.
+  실제 테스트는 부족합니다. 특히 Policy Delegate는 생성자 주입이라 대역을 끼우기 쉬운데도
+  테스트가 없습니다.
