@@ -1,6 +1,6 @@
-# 👨‍💻 Android Developer Portfolio
+# 👨‍💻 Android / Android TV Developer Portfolio
 
-> **Android / Android TV 환경에서 공통 로직을 추상화하고, 재사용성과 확장성을 고려해 개발해온 프로젝트 포트폴리오입니다.**
+> **Android 및 Android TV 환경에서 UI 구현, 유지보수, 공통화, 추상화, 사용자 흐름 구현을 경험한 프로젝트 포트폴리오입니다.**
 
 ---
 
@@ -8,25 +8,64 @@
 
 ### 📺 FormulerLauncher
 
-**Android TV / Set-top Box Launcher**
+**Android TV Launcher / UI Architecture**
 
-Android TV Launcher 환경에서 Interface, Abstract Class, Inheritance, Generic 등을 활용해 공통 기능을 재사용하고 기능별 책임을 분리한 프로젝트입니다.
+Android TV Launcher 환경에서 공통 UI 구조를 추상화하고 재사용성을 높인 프로젝트입니다.
 
 **Key Points**
-- Interface 기반 역할 분리
-- Abstract Class 기반 공통 로직 재사용
-- 상속 / Override를 통한 기능 확장
-- Generic 기반 DAO / Adapter 공통화
-- Android TV Focus / D-pad UX
-- Network / Ethernet / Setup Wizard
+- `ItemView` Interface
+- `GridAdapter` / `GridAdapterContent` / `GridItemView` 추상화
+- `GridAdapterContentApps` / `GridAdapterLockApps` 구현
+- UI 코드 공통화
+- Android TV D-pad / Focus UX
+- Focus Animation
 
 👉 **[FormulerLauncher 상세 보기](./formulerLauncher/)**
 
 ---
 
+### 🛠️ MOL4
+
+**Android TV Application / Maintenance & Feature Improvement**
+
+기존 Android TV 애플리케이션을 유지보수하면서 Live, Group, Server, Profile 영역을 중심으로 UI와 관리 기능을 개선한 프로젝트입니다.
+
+**Key Points**
+- 기존 기능 유지보수 및 버그 수정
+- Live UI 전체
+- `ManageGroup`
+- Server 관리
+- Favorite Group / Channel
+- Pinned Group
+- Profile UI 전체
+- Android TV D-pad / Focus UX
+
+👉 **[MOL4 상세 보기](./mol4/)**
+
+---
+
+### 📱 MyTVOnline+
+
+**Android Application / Home · Live · Setting · Profile**
+
+Home과 Setting은 UI 구현을 중심으로 담당하고, Live 및 Profile 영역의 화면과 사용자 흐름을 구현한 프로젝트입니다.
+
+**Key Points**
+- Home UI
+- Live Channel / Group / EPG UI
+- Setting UI
+- Profile 생성 / 수정 / 삭제 / 전환
+- PIN / Protection UI
+- Jetpack Compose
+- Navigation / Adaptive UI
+
+👉 **[MyTVOnline+ 상세 보기](./plus/)**
+
+---
+
 ### 🏟️ Sports
 
-**Sports Data & UI Application**
+**Sports Data & UI Architecture**
 
 축구, 야구, 농구 등 스포츠 종목별로 달라지는 경기·순위·통계 처리를 공통 추상화와 스포츠별 구현체로 분리한 프로젝트입니다.
 
@@ -34,7 +73,7 @@ Android TV Launcher 환경에서 Interface, Abstract Class, Inheritance, Generic
 - `MatchesMgr` / `StandingsMgr` / `StatisticsMgr` 추상화
 - 스포츠별 상속 및 Polymorphism
 - `IndividualSports` / `ItemView` Interface
-- `BaseGridFragment`를 통한 UI 공통화
+- `BaseGridFragment` UI 공통화
 - 스포츠 추가를 고려한 확장 가능한 구조
 - 공통 로직과 변경되는 정책의 분리
 
@@ -42,41 +81,46 @@ Android TV Launcher 환경에서 Interface, Abstract Class, Inheritance, Generic
 
 ---
 
-## 🧠 Core Skills
+# 🧠 Core Skills
 
 | Category | Skills |
 |---|---|
-| **OOP** | Interface · Abstract Class · Inheritance · Polymorphism |
-| **Design** | Abstraction · Composition · Separation of Responsibility |
-| **Reuse** | Generic · Common Component · Base Class |
-| **Android** | Kotlin · Java · RecyclerView · Fragment |
-| **Android TV** | Leanback · D-pad · Focus UI · Launcher |
-| **Data** | Room · DAO · Generic DAO |
-| **Network** | OkHttp · Network State · Ethernet / Wi-Fi |
+| **Language** | Kotlin · Java |
+| **Platform** | Android · Android TV |
+| **UI** | Jetpack Compose · RecyclerView · Fragment · Material 3 |
+| **TV UX** | D-pad · Focus · Focus Animation · TV Launcher UI |
+| **Architecture** | ViewModel · StateFlow / Flow · Navigation · Hilt |
+| **OOP / Design** | Interface · Abstract Class · Inheritance · Polymorphism |
+| **Code Quality** | Abstraction · Reusability · Separation of Responsibility |
+| **Maintenance** | 기존 코드 분석 · 기능 개선 · Bug Fix · UI 개선 |
 
 ---
 
-## 🎯 Development Philosophy
+# 🎯 Development Highlights
 
-### 01. 공통인 것은 한 번만 구현한다
+### Android TV UI
 
-여러 기능에서 반복되는 로직은 공통 계층으로 올려 중복 구현을 줄입니다.
+Android TV 환경에서 리모컨 기반 D-pad / Focus UX를 고려한 Launcher, Live, Profile 등의 UI를 구현했습니다.
 
-### 02. 변경되는 부분은 분리한다
+### UI 공통화
 
-스포츠별 규칙이나 화면별 차이처럼 변경 가능성이 높은 부분은 Interface, Abstract Method, 하위 구현체 등으로 분리합니다.
+반복되는 UI 동작을 Interface, Abstract Class, Base Component 등의 형태로 분리하여 재사용성을 높였습니다.
 
-### 03. 구현보다 역할을 먼저 정의한다
+### 유지보수
 
-필요한 경우 Interface를 활용하여 사용하는 코드가 구체적인 구현체에 직접 의존하지 않도록 합니다.
+기존 Android TV 코드베이스를 분석하고 기존 사용자 흐름을 유지하면서 필요한 기능과 UI를 개선했습니다.
 
-### 04. 확장을 기존 코드의 복사로 해결하지 않는다
+### 복잡한 사용자 흐름
 
-새로운 기능이나 스포츠가 추가될 때 기존 공통 로직을 재사용하고, 필요한 차이점만 구현할 수 있는 구조를 지향합니다.
+Home, Live, Setting, Profile과 같이 서로 연결되는 화면에서 Navigation과 상태를 연결하여 사용자 흐름을 구현했습니다.
+
+### 확장 가능한 구조
+
+스포츠 프로젝트에서는 공통 처리와 종목별 차이를 분리하고, Launcher 프로젝트에서는 공통 UI 계층을 추상화하여 확장 가능한 구조를 구성했습니다.
 
 ---
 
-## 📂 Repository Structure
+# 📂 Repository Structure
 
 ```text
 portfolio/
@@ -86,16 +130,22 @@ portfolio/
 ├── formulerLauncher/
 │   └── README.md
 │
-├── sports/
+├── mol4/
 │   └── README.md
 │
-└── ...
+├── plus/
+│   └── README.md
+│
+└── sports/
+    └── README.md
 ```
 
-각 프로젝트는 별도의 README에서 **Architecture → 핵심 코드 → Before / After → 기여 내용 → 기술적 성과** 순서로 자세하게 확인할 수 있습니다.
+각 프로젝트는 별도의 README에서 담당 범위와 핵심 구현 내용을 확인할 수 있습니다.
 
 ---
 
-## 📌 Portfolio Summary
+# 📌 Portfolio Summary
 
-**단순히 기능을 구현하는 것을 넘어, 반복되는 문제를 공통화하고 변경되는 부분을 분리하여 유지보수성과 확장성을 고려한 Android 개발을 지향합니다.**
+> **Android / Android TV 환경에서 UI 구현부터 기존 서비스 유지보수, 공통화와 추상화, 복잡한 사용자 흐름 구현까지 경험했습니다.**
+>
+> 특히 Android TV에서는 **D-pad / Focus 기반 UI**, **Live / Group 관리**, **Profile UI**, **Launcher UI**를 경험했고, Android 프로젝트에서는 **Jetpack Compose 기반 Home / Setting UI와 Profile 흐름**을 구현했습니다.
