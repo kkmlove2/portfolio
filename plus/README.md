@@ -76,6 +76,61 @@ EPG 확인
 Program Detail
 ```
 
+### ManageGroup — Interface 기반 구조
+
+Group 관리 영역에서는 **관리 동작의 역할을 Interface로 분리하고, 실제 구현체에서 각 동작을 처리하는 형태**로 Skeleton을 구성했습니다.
+
+```kotlin
+interface ManageGroupController {
+
+    fun addGroup(group: Group)
+
+    fun renameGroup(
+        group: Group,
+        name: String
+    )
+
+    fun deleteGroup(group: Group)
+
+    fun moveGroup(
+        group: Group,
+        position: Int
+    )
+}
+
+class ManageGroupManager : ManageGroupController {
+
+    override fun addGroup(group: Group) {
+        // Add group
+    }
+
+    override fun renameGroup(
+        group: Group,
+        name: String
+    ) {
+        // Rename group
+    }
+
+    override fun deleteGroup(group: Group) {
+        // Delete group
+    }
+
+    override fun moveGroup(
+        group: Group,
+        position: Int
+    ) {
+        // Reorder group
+    }
+}
+```
+
+**의도**
+
+- `ManageGroupController`를 통해 Group 관리 기능의 공통 역할 정의
+- Add / Rename / Delete / Reorder 책임을 명확하게 분리
+- UI에서 관리 로직의 구체적인 구현보다 Interface 기반 역할에 의존할 수 있도록 구성
+- 실제 서비스 코드는 공개하지 않고 담당 기능의 구조와 설계 방향만 표현
+
 ---
 
 # 3. Setting — UI 구현
@@ -201,7 +256,31 @@ fun LiveScreen(
 
 ---
 
-## 3. Profile — 상태와 화면 흐름
+## 3. ManageGroup — Interface / 구현체 분리
+
+Group 관리 기능은 별도의 예제 파일에서도 확인할 수 있도록 분리했습니다.
+
+```text
+ManageGroupController
+          │
+          │ implements
+          ▼
+  ManageGroupManager
+          │
+     ┌────┼────┬──────┐
+     ▼    ▼    ▼      ▼
+    Add Rename Delete Reorder
+```
+
+- Interface → Group 관리 기능의 역할과 계약 정의
+- Implementation → 실제 상태 변경 및 관리 동작 구현
+- UI → Interface를 통해 Group 관리 동작 호출
+
+자세한 Skeleton은 [`examples/ManageGroupControllerExample.kt`](./examples/ManageGroupControllerExample.kt)에서 확인할 수 있습니다.
+
+---
+
+## 4. Profile — 상태와 화면 흐름
 
 ```kotlin
 class ProfileManager {
@@ -285,6 +364,10 @@ App
 ### 상태 기반 UI
 
 Live와 Profile에서 화면 상태와 사용자 이벤트를 연결하여 화면 흐름을 구성했습니다.
+
+### Interface 기반 기능 구조
+
+ManageGroup 영역에서는 Group 관리 동작을 Interface로 정의하고 구현체에서 실제 동작을 분리하는 구조를 보여줍니다.
 
 ### Navigation
 
