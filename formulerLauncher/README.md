@@ -281,11 +281,3 @@ TV UI에서 반복되는 Item 저장과 Focus Animation 동작, Dim 처리의 �
 | UI | Android View, RecyclerView, Leanback |
 | Architecture | Interface / Abstract Class / Inheritance |
 | UX | D-pad / Focus / Focus Animation |
-
----
-
-# Portfolio Summary
-
-> **FormulerLauncher는 Android TV Launcher 환경에서 반복되는 Grid UI와 Focus 동작을 공통화하고, Interface / Abstract Class / Inheritance를 활용해 재사용 가능한 UI 구조를 구현한 프로젝트입니다.**
-
-단순히 화면을 구현하는 데 그치지 않고, **공통 로직은 부모 계층에서 관리하고 화면별로 달라지는 부분은 자식 클래스에서 확장할 수 있도록 설계한 경험**을 보여주는 프로젝트입니다.
