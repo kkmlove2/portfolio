@@ -1,18 +1,19 @@
-# MyTVOnline+ — Home / Live / Setting / Profile Portfolio
+# MyTVOnline+ — Compose UI / Live / Profile Portfolio
 
-> Android 애플리케이션에서 **Home, Live, Setting, Profile 영역**을 중심으로 UI와 사용자 흐름을 구현한 프로젝트
+> Android 애플리케이션에서 **Home UI, Live, Setting UI, Profile**을 중심으로 화면과 사용자 흐름을 구현한 프로젝트입니다.
 
 ---
 
 ## 프로젝트 소개
 
-**MyTVOnline+** 프로젝트에서 제가 담당한 영역을 정리한 포트폴리오입니다.
+MyTVOnline+에서는 **Jetpack Compose 기반 UI 구현과 화면 간 사용자 흐름 구성**을 중심으로 작업했습니다.
 
-제가 담당한 범위는 **Home UI / Live / Setting UI / Profile**이며, 각 영역의 실제 구현 내용을 중심으로 정리했습니다.
+- Home → UI 구현 중심
+- Live → Channel / Group / EPG 탐색 UI
+- Setting → UI 구현 중심
+- Profile → `profile/` 폴더 내 구현
 
-특히 **Home과 Setting은 UI 구현을 중심으로 담당**했으며, Profile은 **`profile/` 폴더 내 구현만** 담당 범위로 포함했습니다.
-
-VOD, Search, TV Series, Player 및 Member 관련 기능은 담당 범위에서 제외했습니다.
+VOD, Search, TV Series, Player 및 Member / Account 관련 기능은 담당 범위에서 제외했습니다.
 
 ---
 
@@ -20,38 +21,16 @@ VOD, Search, TV Series, Player 및 Member 관련 기능은 담당 범위에서 �
 
 ## 1. Home — UI 구현
 
-앱의 메인 화면인 Home 영역의 **화면 UI 구성과 사용자에게 보여지는 콘텐츠 영역의 레이아웃**을 구현했습니다.
+Home 메인 화면에서 사용자가 보는 콘텐츠 영역과 화면 구성을 구현했습니다.
 
-### 주요 구현 영역
-
-- Home 메인 화면 UI 구성
-- Banner UI 구성
-- Trending 콘텐츠 영역 UI
-- 최근 시청 콘텐츠 영역 UI
-- Notice 영역 UI
-- Compose 기반 UI 구성
-- 화면 크기에 대응하는 Adaptive UI 구성
-- Home 화면 Navigation UI 흐름 구성
-
-### 주요 파일
-
-```text
-home/
-├── HomeScreen.kt
-├── HomeNavigation.kt
-├── LiveRecentList.kt
-├── TrendingList.kt
-├── ExpireReminder.kt
-├── banner/
-│   ├── Banner.kt
-│   ├── BannerData.kt
-│   └── BannerConfig.kt
-└── notice/
-    ├── NoticeData.kt
-    └── NoticeConfig.kt
-```
-
-### Home 화면 구조
+- Banner UI
+- Trending UI
+- Live Recent UI
+- Recent Content UI
+- Notice UI
+- Compose 기반 UI
+- Adaptive UI
+- Home Navigation UI 흐름
 
 ```text
 Home
@@ -63,357 +42,279 @@ Home
      └─ Notice
 ```
 
-> Home은 **UI 구현 범위**를 기준으로 정리했습니다. 데이터 처리나 기능 로직 자체를 주요 담당 영역으로 기술하지 않았습니다.
+> Home은 **UI 구현 중심**으로 기술하며 데이터 처리나 서비스 로직을 주요 담당으로 주장하지 않습니다.
 
 ---
 
 # 2. Live
 
-Live 콘텐츠를 탐색하고 채널 및 EPG 정보를 확인할 수 있는 Live 영역을 구현했습니다.
+Live에서는 채널과 Group을 탐색하고 EPG 정보를 확인할 수 있는 화면을 구현했습니다.
 
-Player 자체 구현은 담당 범위에서 제외하고, **Live 화면의 채널/그룹/EPG 탐색과 UI 흐름**을 중심으로 정리했습니다.
-
-### 주요 구현 영역
-
-- Live Navigation 구성
-- Channel List 화면
-- Channel Group / Favorite Group UI
-- EPG List 화면
-- Group 선택 UI
+- Live Navigation
+- Channel List
+- Group / Favorite Group UI
+- EPG List
+- Grid EPG
+- EPG Detail Dialog
 - Channel Logo UI
-- 채널 목록 탐색 및 화면 상태 관리
-- Grid EPG UI
-- EPG 시간/프로그램 영역 구성
-- EPG 상세 정보 Dialog
-- Live History 관리
-- Sport Mode 관련 UI/상태 관리
+- Live History 관련 화면
+- Sport Mode 관련 UI / 상태
 
-### 주요 파일
+Player 자체 구현은 담당 범위에서 제외했습니다.
 
-```text
-live/
-├── LiveNavigation.kt
-├── LiveViewModel.kt
-├── LiveData.kt
-├── HistoryMgr.kt
-├── TimeTickViewModel.kt
-├── list/
-│   ├── ChannelListScreen.kt
-│   ├── ChannelListPage.kt
-│   ├── ChannelList.kt
-│   ├── GroupList.kt
-│   ├── GroupChannelListPage.kt
-│   ├── EpgList.kt
-│   ├── EpgListPage.kt
-│   ├── GroupDropdownButton.kt
-│   └── ChannelLogoImage.kt
-├── grid/
-│   ├── GridEpgScreen.kt
-│   ├── GridEpgContent.kt
-│   ├── GridEpgViewModel.kt
-│   ├── GridEpgState.kt
-│   ├── GridEpgTimeHeader.kt
-│   ├── GridEpgChannelColumn.kt
-│   ├── GridEpgProgramCell.kt
-│   └── EpgDetailDialog.kt
-└── sportmode/
-    └── SportModeMgr.kt
-```
-
-### Live 화면 구조
+### 화면 흐름
 
 ```text
 Live
- ├─ Channel List
- │   ├─ Group
- │   ├─ Channel
- │   └─ EPG
- │
- └─ Grid EPG
-     ├─ Time Header
-     ├─ Channel Column
-     ├─ Program Cell
-     └─ EPG Detail
+  ↓
+Group 선택
+  ↓
+Channel List
+  ↓
+EPG 확인
+  ↓
+Program Detail
 ```
 
 ---
 
 # 3. Setting — UI 구현
 
-Setting 영역에서는 앱 설정 화면과 세부 설정 화면의 **UI 및 화면 구성**을 담당했습니다.
+Setting에서는 설정 화면과 세부 화면의 UI를 구현했습니다.
 
-### 주요 구현 영역
-
-- Setting 화면 UI 구성
-- EPG Data Setting UI
-- Audio / Subtitle Setting UI
+- EPG Data UI
+- Audio / Subtitle UI
 - Subtitle Appearance UI
 - App Settings UI
 - About Dialog UI
-- Setting 화면 Navigation 구성
-- Compose 기반 설정 화면 구성
+- Setting Navigation
 
-### 주요 파일
-
-```text
-setting/
-├── EPGDataScreen.kt
-├── EpgOffset.kt
-├── AudioSubtitleScreen.kt
-├── SubtitleAppearanceScreen.kt
-├── AppSettingsScreen.kt
-├── AboutDialog.kt
-└── navigation/
-    └── ManagePortalNavigation.kt
-```
-
-### Setting 화면 구조
-
-```text
-Setting
- ├─ EPG Data
- │   ├─ EPG Update
- │   └─ EPG Data Storage
- │
- ├─ Audio / Subtitle
- │   ├─ Audio Language
- │   ├─ Subtitle Language
- │   └─ Subtitle Appearance
- │
- ├─ App Settings
- └─ About
-```
-
-> Setting은 **화면 UI 구현을 중심으로 담당**했으며, 설정 데이터 처리나 백엔드 기능 자체를 주요 담당 영역으로 기술하지 않았습니다.
+> 설정 데이터 처리나 백엔드 기능 자체를 주요 담당으로 기술하지 않고 **화면 UI 구현**에 초점을 맞췄습니다.
 
 ---
 
 # 4. Profile
 
-Profile 기능은 **`profile/` 폴더 내 구현만** 담당 범위로 정리했습니다.
-
-여러 사용자가 하나의 앱 환경에서 각각의 Profile을 생성하고 선택할 수 있도록 Profile 생성, 수정, 보호, 전환 및 관리 화면을 구현했습니다.
-
-### 주요 구현 영역
+Profile은 **`profile/` 폴더 내 구현만** 담당 범위로 정리했습니다.
 
 - Profile 생성
-- Profile 이름 입력
+- Name 입력
 - Avatar 선택
 - Profile 수정
 - Profile Settings
-- Profile PIN / Protection UI
-- Sensitive Categories 설정
+- PIN / Protection UI
+- Sensitive Categories
 - Profile 전환
 - Profile 삭제
-- Profile Navigation 구성
-- Profile 선택 상태 관리
-- Profile 변경에 따른 화면 흐름 연동
+- Profile Navigation
+- 선택 Profile 상태와 화면 흐름 연결
 
-### 주요 파일
-
-```text
-profile/
-├── ProfileMgr.kt
-├── ProfileManagementScreen.kt
-├── ProfileHubAdaptiveScreen.kt
-├── ProfileHubNavigation.kt
-├── ProfileNavigation.kt
-├── SwitchProfileScreen.kt
-├── EditProfileScreen.kt
-├── ProfileSettingsScreen.kt
-├── ChooseAvatarScreen.kt
-├── NameInputScreen.kt
-├── NameInputDialog.kt
-├── ProfilePinDialog.kt
-├── ProtectionScreen.kt
-├── SensitiveCategoriesScreen.kt
-├── HelpAndInfoScreen.kt
-└── AddProfileNavigation.kt
-```
-
-### Profile 관리 흐름
+### Profile 흐름
 
 ```text
 Profile
- ├─ Switch Profile
- │
- ├─ Profile Hub
- │   ├─ Profile Management
- │   │   └─ Edit Profile
- │   │       ├─ Avatar
- │   │       ├─ Name
- │   │       └─ PIN / Protection
- │   │
- │   ├─ Profile Settings
- │   └─ Sensitive Categories
- │
- ├─ Add Profile
- │   ├─ Choose Avatar
- │   └─ Enter Name
- │
- └─ Delete Profile
+  │
+  ├─ Add Profile
+  │    ├─ Avatar
+  │    └─ Name
+  │
+  ├─ Edit Profile
+  │    ├─ Avatar
+  │    ├─ Name
+  │    └─ PIN / Protection
+  │
+  ├─ Switch Profile
+  │
+  └─ Delete Profile
 ```
-
-### Profile 상태 관리
-
-`ProfileMgr`를 중심으로 현재 선택된 Profile 상태를 관리하고 Profile 추가/수정/삭제 및 선택 화면과 연결했습니다.
-
-Profile 전환 시 선택된 Profile에 맞는 화면 흐름이 이어지도록 관련 영역과 연동했습니다.
 
 ---
 
-# Architecture & Implementation
+# Code Skeleton
 
-## Jetpack Compose
+> 아래 코드는 실제 서비스 소스를 공개한 것이 아니라, **실제 담당 영역의 구조와 구현 방식을 보여주기 위해 재구성한 Skeleton**입니다.
 
-Home과 Setting을 포함한 주요 화면 UI를 Jetpack Compose 기반으로 구성했습니다.
+## 1. Home — Compose UI
 
-- `@Composable` 기반 UI
-- Compose 상태 기반 화면 구성
-- Compose Navigation을 활용한 화면 전환
-- Material 3 기반 UI
-- Adaptive UI 구성
+```kotlin
+@Composable
+fun HomeScreen(
+    onLiveClick: () -> Unit
+) {
+    Column {
+        Banner()
+        TrendingList()
+        LiveRecentList()
+        RecentContentList()
+        NoticeList()
 
-## ViewModel / State
-
-Live와 Profile 영역에서는 ViewModel 및 상태 관리 구조를 활용하여 화면 상태와 사용자 흐름을 연결했습니다.
-
-```text
-Live Screen
-   ↓
-LiveViewModel
-   ↓
-Channel / Group / EPG State
+        // Navigate to Live
+        LiveButton(onClick = onLiveClick)
+    }
+}
 ```
 
-```text
-Profile Screen
-   ↓
-ProfileMgr
-   ↓
-Selected Profile State
+**의도**
+
+- 화면을 기능별 Composable로 분리
+- 각 UI 영역의 책임을 명확하게 구성
+- 화면 이벤트와 Navigation을 callback으로 연결
+
+---
+
+## 2. Live — UI State 연결
+
+```kotlin
+data class LiveUiState(
+    val selectedGroup: Group? = null,
+    val selectedChannel: Channel? = null,
+    val showEpg: Boolean = false
+)
+
+@Composable
+fun LiveScreen(
+    state: LiveUiState,
+    onGroupSelected: (Group) -> Unit,
+    onChannelSelected: (Channel) -> Unit
+) {
+    GroupList(
+        selectedGroup = state.selectedGroup,
+        onGroupSelected = onGroupSelected
+    )
+
+    ChannelList(
+        selectedChannel = state.selectedChannel,
+        onChannelSelected = onChannelSelected
+    )
+
+    if (state.showEpg) {
+        GridEpgScreen()
+    }
+}
 ```
 
-## Navigation
+**의도**
 
-기능별 Navigation 구조를 분리하여 각 영역의 화면 흐름을 관리했습니다.
+- UI가 직접 데이터를 관리하기보다 상태를 전달받아 화면을 구성
+- Group → Channel → EPG로 이어지는 사용자 흐름을 상태로 표현
+- 이벤트는 callback으로 분리하여 UI와 동작을 구분
+
+---
+
+## 3. Profile — 상태와 화면 흐름
+
+```kotlin
+class ProfileManager {
+
+    private val profiles = mutableListOf<Profile>()
+
+    var selectedProfile: Profile? = null
+        private set
+
+    fun add(profile: Profile) {
+        profiles += profile
+    }
+
+    fun select(profile: Profile) {
+        selectedProfile = profile
+    }
+
+    fun update(profile: Profile) {
+        // Update profile state
+    }
+
+    fun delete(profile: Profile) {
+        profiles.remove(profile)
+    }
+}
+```
+
+**의도**
+
+Profile 생성 → 선택 → 수정 → 삭제의 상태를 관리하고, 선택된 Profile이 관련 화면 흐름으로 이어지도록 구성하는 구조를 보여줍니다.
+
+---
+
+# Architecture
+
+### Compose UI
+
+```text
+Composable Screen
+       ↓
+     UI State
+       ↓
+User Interaction
+       ↓
+Navigation / State Update
+```
+
+### 기능별 Navigation
 
 ```text
 App
  ├─ Home
- │   └─ Dashboard
- │
  ├─ Live
- │   └─ Channel List / EPG
- │
+ │   ├─ Channel
+ │   └─ EPG
  ├─ Setting
- │   ├─ EPG
- │   ├─ Audio / Subtitle
- │   └─ App Settings
- │
  └─ Profile
-     ├─ Profile Hub
-     ├─ Add Profile
-     ├─ Edit Profile
-     └─ Switch Profile
+     ├─ Add
+     ├─ Edit
+     └─ Switch
 ```
 
----
+주요 기술:
 
-# 내가 기여한 부분
-
-## ① Home UI
-
-- Home 메인 화면 UI 구성
-- Banner / Trending / Recent 콘텐츠 영역 UI
-- Notice 영역 UI
-- Compose 기반 화면 구성
-- Adaptive UI 적용
-
-## ② Live
-
-- Channel List 및 Group UI
-- EPG List 및 Grid EPG UI
-- 채널/EPG 탐색을 위한 화면 구조 구성
-- Live 화면 상태 및 History 연동
-
-## ③ Setting UI
-
-- Setting 화면 UI 구성
-- EPG Data 화면 UI
-- Audio / Subtitle 화면 UI
-- Subtitle Appearance 화면 UI
-- App Settings 화면 UI
-- About Dialog UI
-
-## ④ Profile
-
-- Profile 생성 / 수정 / 삭제
-- Avatar / Name 관리
-- Profile PIN 및 Protection
-- Profile Settings
-- Profile 전환
-- Profile 상태 관리
-- Profile Navigation 구성
+- Jetpack Compose
+- Material 3
+- ViewModel
+- StateFlow / Flow
+- Navigation
+- Adaptive UI
+- Kotlin / Java
 
 ---
 
-# 기술적 성과
+# 내가 보여주고 싶은 개발 역량
 
-### UI / Architecture
+### UI 구현
 
-- 기능별 화면 및 Navigation 구조 분리
-- Jetpack Compose 기반 UI 구성
-- Adaptive UI를 통한 다양한 화면 크기 대응
-- 화면별 상태 관리 구조 활용
+실제 서비스 화면을 Compose 기반으로 구성하고 기능별 UI를 컴포넌트 단위로 나누어 관리했습니다.
 
-### 사용자 경험
+### 상태 기반 UI
 
-- Home → Live → Setting → Profile로 이어지는 기능별 화면 흐름 구성
-- Live에서 Channel / Group / EPG를 단계적으로 탐색할 수 있는 UI 구성
-- Profile 생성부터 전환 및 관리까지 일관된 화면 흐름 구성
+Live와 Profile에서 화면 상태와 사용자 이벤트를 연결하여 화면 흐름을 구성했습니다.
 
-### Profile
+### Navigation
 
-- Profile 생성부터 삭제까지 전체 관리 흐름 구현
-- Avatar / Name / PIN / Protection을 분리된 화면으로 구성
-- 선택 Profile 상태를 화면과 연결하여 Profile 전환 흐름 구현
+기능별 화면을 분리하고 Home / Live / Setting / Profile의 사용자 흐름을 연결했습니다.
 
----
+### Adaptive UI
 
-# Tech Stack
-
-| Category | Technology |
-|---|---|
-| Language | Kotlin, Java |
-| Platform | Android |
-| UI | Jetpack Compose, Material 3 |
-| Architecture | ViewModel, StateFlow / Flow |
-| Navigation | Compose Navigation |
-| DI | Hilt |
-| UI Adaptation | Material 3 Adaptive |
+다양한 화면 크기에서 사용할 수 있도록 화면 구성과 레이아웃을 대응시켰습니다.
 
 ---
 
 # 담당 범위 외
 
-아래 기능은 제가 담당한 범위가 아니므로 본 포트폴리오의 구현 내용에서 제외했습니다.
+아래 기능은 담당 범위가 아니므로 포트폴리오의 구현 내용에서 제외했습니다.
 
 - VOD
 - Search
 - TV Series
 - Player
-- Member / Account 관련 기능
+- Member / Account
 - `member/` 패키지
 - `UserMgr`
 - 기타 담당하지 않은 기능 및 모듈
 
-> **Profile 기능은 `profile/` 폴더에 포함된 구현만 기준으로 정리했습니다.**
+> Profile은 **`profile/` 폴더 내 구현만** 담당 범위로 포함했습니다.
 
 ---
 
 # Portfolio Summary
 
-> **MyTVOnline+는 Home UI, Live, Setting UI, Profile 영역을 중심으로 Jetpack Compose와 Navigation을 활용하여 실제 Android 애플리케이션의 화면과 사용자 흐름을 구현한 프로젝트입니다.**
+> **MyTVOnline+에서는 Jetpack Compose를 활용한 Home / Setting UI, Live의 Channel / Group / EPG 탐색 UI, Profile의 생성·수정·전환·보호 흐름을 구현했습니다.**
 >
-> 특히 **Home과 Setting의 UI 구현, Live의 Channel / EPG 탐색 UI, Profile의 생성·수정·전환·보호 흐름**을 담당하여 기능별 화면을 구성하고 서로 연결되는 사용자 경험을 구현했습니다.
+> 포트폴리오에서는 실제 서비스 코드를 공개하는 대신, 담당 기능의 핵심 구조와 설계 방식을 이해할 수 있도록 **Reconstructed Code Skeleton**을 제공합니다.
