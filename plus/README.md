@@ -126,7 +126,7 @@ interface ManageGroup : TabModule {
 
 - `ManageGroup` → Group 관리 기능의 역할 정의
 - `getViewModel()` → ViewModel과 기능 영역 연결
-- `ReqGroupGridData()` → Compose UI에서 Group Grid 데이터를 요청하고 Loading / Response 상태 연결
+- `ReqGroupGridData()` → Compose UI에서 Group Grid 데이터를 요청하고 Loading / Response를 callback으로 전달
 - `setShownGroup()` / `setShownGroupAll()` → Group 표시 여부 관리
 - `setPinnedGroup()` → Pinned Group 상태 관리
 - `changePinnedGroupPosition()` → Pinned Group 순서 변경
@@ -165,7 +165,7 @@ Profile은 **`profile/` 폴더 내 구현만** 담당 범위로 정리했습니�
 - Profile 전환
 - Profile 삭제
 - Profile Navigation
-- 선택 Profile 상태와 화면 흐름 연결
+- 선택 Profile에 따른 화면 흐름 연결
 
 ### Profile 흐름
 
@@ -231,17 +231,11 @@ fun HomeScreen(
 
 ---
 
-## 2. Live — State / ViewModel / UI 구조
+## 2. Live — 사용자 선택 / 화면 흐름
 
-Live는 Group → Channel → EPG로 이어지는 사용자 흐름을 상태와 이벤트로 표현했습니다.
+Live는 Group → Channel → EPG로 이어지는 사용자 흐름을 이벤트와 화면 구성으로 표현했습니다.
 
 ```kotlin
-data class LiveUiState(
-    val selectedGroup: Group? = null,
-    val selectedChannel: Channel? = null,
-    val showEpg: Boolean = false
-)
-
 interface LiveScreenController {
     fun getViewModel(): LiveViewModel
     fun selectGroup(group: Group)
@@ -249,41 +243,40 @@ interface LiveScreenController {
 }
 
 class LiveViewModel {
-    var uiState: LiveUiState = LiveUiState()
-        private set
+    private var selectedGroup: Group? = null
+    private var selectedChannel: Channel? = null
 
     fun selectGroup(group: Group) {
-        uiState = uiState.copy(selectedGroup = group)
+        selectedGroup = group
     }
 
     fun selectChannel(channel: Channel) {
-        uiState = uiState.copy(selectedChannel = channel)
+        selectedChannel = channel
     }
 }
 
 @Composable
 fun LiveScreen(
-    state: LiveUiState,
+    selectedGroup: Group?,
+    selectedChannel: Channel?,
     onGroupSelected: (Group) -> Unit,
     onChannelSelected: (Channel) -> Unit
 ) {
-    GroupList(state.selectedGroup, onGroupSelected)
-    ChannelList(state.selectedChannel, onChannelSelected)
-
-    if (state.showEpg) {
-        GridEpg()
-        EpgDetail()
-    }
+    GroupList(selectedGroup, onGroupSelected)
+    ChannelList(selectedChannel, onChannelSelected)
+    GridEpg()
+    EpgDetail()
 }
 ```
 
 **의도**
 
-- `LiveUiState` → 현재 선택된 Group / Channel / EPG 상태 표현
-- `LiveViewModel` → 사용자 선택에 따른 상태 변경 담당
-- Compose UI → 상태를 전달받아 화면 구성
-- Callback → 사용자 이벤트와 상태 변경 흐름 연결
-- Group → Channel → EPG 탐색 흐름을 하나의 구조로 표현
+- Group → Channel → EPG 탐색 흐름을 표현
+- 사용자 선택과 화면 동작의 역할을 분리
+- Compose UI는 필요한 값을 전달받아 화면을 구성
+- Android TV / 다양한 화면 크기에서의 탐색 UX를 고려
+
+> 실제 프로젝트에서 사용하지 않은 `UiState` 패턴을 임의로 추가하지 않고, 포트폴리오에서는 실제 담당 영역에서 확인할 수 있는 ViewModel / callback / Compose 구조를 중심으로 표현합니다.
 
 ---
 
@@ -329,9 +322,9 @@ interface ManageGroup : TabModule {
 
 ---
 
-## 4. Profile — 상태와 사용자 흐름
+## 4. Profile — 사용자 흐름
 
-Profile은 생성 → 선택 → 수정 → 삭제의 상태 변화를 하나의 흐름으로 관리하는 구조를 중심으로 구현했습니다.
+Profile은 생성 → 선택 → 수정 → 삭제의 사용자 흐름을 ViewModel의 기능으로 표현했습니다.
 
 ```kotlin
 interface ProfileController {
@@ -348,65 +341,49 @@ data class Profile(
     val avatar: String
 )
 
-data class ProfileUiState(
-    val profiles: List<Profile> = emptyList(),
-    val selectedProfile: Profile? = null
-)
-
 class ProfileViewModel {
-    var uiState: ProfileUiState = ProfileUiState()
-        private set
+    private val profiles = mutableListOf<Profile>()
+    private var selectedProfileId: String? = null
 
     fun addProfile(profile: Profile) {
-        uiState = uiState.copy(
-            profiles = uiState.profiles + profile
-        )
+        profiles += profile
+        if (selectedProfileId == null) {
+            selectedProfileId = profile.id
+        }
     }
 
     fun selectProfile(profileId: String) {
-        uiState = uiState.copy(
-            selectedProfile = uiState.profiles.firstOrNull { it.id == profileId }
-        )
+        if (profiles.any { it.id == profileId }) {
+            selectedProfileId = profileId
+        }
     }
 
     fun updateProfile(profile: Profile) {
-        val profiles = uiState.profiles.map {
-            if (it.id == profile.id) profile else it
+        val index = profiles.indexOfFirst { it.id == profile.id }
+        if (index >= 0) {
+            profiles[index] = profile
         }
-
-        val selected = if (uiState.selectedProfile?.id == profile.id) {
-            profile
-        } else {
-            uiState.selectedProfile
-        }
-
-        uiState = uiState.copy(
-            profiles = profiles,
-            selectedProfile = selected
-        )
     }
 
     fun deleteProfile(profileId: String) {
-        uiState = uiState.copy(
-            profiles = uiState.profiles.filterNot { it.id == profileId },
-            selectedProfile = uiState.selectedProfile
-                ?.takeUnless { it.id == profileId }
-        )
+        profiles.removeAll { it.id == profileId }
+
+        if (selectedProfileId == profileId) {
+            selectedProfileId = profiles.firstOrNull()?.id
+        }
     }
 }
 ```
 
 **의도**
 
-- Profile 상태를 `ProfileUiState`로 관리
-- 생성 / 선택 / 수정 / 삭제 책임을 명확하게 분리
-- 선택된 Profile이 수정 또는 삭제될 때 상태를 함께 갱신
-- Profile 화면 간 사용자 흐름을 상태 기반으로 연결
+- Profile 생성 / 선택 / 수정 / 삭제 책임을 기능별로 분리
+- 선택 Profile 변경에 따른 사용자 흐름을 표현
 - 실제 서비스의 저장소 및 인증/보안 구현은 공개하지 않음
 
 ---
 
-# 🔄 UI / State Flow
+# 🔄 UI Flow
 
 ```text
                          MyTVOnline+
@@ -430,7 +407,7 @@ class ProfileViewModel {
                  │            │            │
                  └────────────┴────────────┘
                               │
-                         UI State Update
+                         화면 / 데이터 반영
 ```
 
 ---
@@ -441,9 +418,9 @@ class ProfileViewModel {
 
 실제 서비스 화면을 Compose 기반으로 구성하고 기능별 UI를 컴포넌트 단위로 나누어 관리했습니다.
 
-### 상태 기반 UI
+### 사용자 흐름 구현
 
-Live와 Profile에서 화면 상태와 사용자 이벤트를 연결하여 화면 흐름을 구성했습니다.
+Live와 Profile에서 사용자 선택과 이벤트를 연결하여 화면 흐름을 구성했습니다.
 
 ### Interface 기반 기능 구조
 
@@ -466,8 +443,8 @@ ManageGroup 영역에서는 실제 기능에 필요한 역할을 Interface로 �
 | Language | Kotlin / Java |
 | Platform | Android |
 | UI | Jetpack Compose / Material 3 |
-| Architecture | ViewModel / StateFlow / Flow / Navigation |
-| Design | Interface / State-based UI / Component Reusability |
+| Architecture | ViewModel / Navigation |
+| Design | Interface / Callback / Component Reusability |
 | Key Point | UI Implementation / User Flow / Abstraction |
 
 ---
