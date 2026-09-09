@@ -310,11 +310,3 @@ Live와 Profile에서 화면 상태와 사용자 이벤트를 연결하여 화�
 - 기타 담당하지 않은 기능 및 모듈
 
 > Profile은 **`profile/` 폴더 내 구현만** 담당 범위로 포함했습니다.
-
----
-
-# Portfolio Summary
-
-> **MyTVOnline+에서는 Jetpack Compose를 활용한 Home / Setting UI, Live의 Channel / Group / EPG 탐색 UI, Profile의 생성·수정·전환·보호 흐름을 구현했습니다.**
->
-> 포트폴리오에서는 실제 서비스 코드를 공개하는 대신, 담당 기능의 핵심 구조와 설계 방식을 이해할 수 있도록 **Reconstructed Code Skeleton**을 제공합니다.
