@@ -78,58 +78,61 @@ Program Detail
 
 ### ManageGroup — Interface 기반 구조
 
-Group 관리 영역에서는 **관리 동작의 역할을 Interface로 분리하고, 실제 구현체에서 각 동작을 처리하는 형태**로 Skeleton을 구성했습니다.
+Group 관리 영역에서는 Interface를 통해 ViewModel, Group 데이터 조회, 표시 여부, Pinned 상태 및 순서 변경과 같은 기능의 역할을 정의했습니다.
 
 ```kotlin
-interface ManageGroupController {
+interface ManageGroup : TabModule {
 
-    fun addGroup(group: Group)
+    /**
+     * Pinned group data + all group data(include hidden groups).
+     */
+    fun getViewModel(): ManageGroupViewModel
 
-    fun renameGroup(
-        group: Group,
-        name: String
+    @Composable
+    fun ReqGroupGridData(
+        onResponse: (ArrayList<GroupData>) -> Unit,
+        onLoading: (Boolean) -> Unit
     )
 
-    fun deleteGroup(group: Group)
+    fun getServerName(item: Any): String?
 
-    fun moveGroup(
-        group: Group,
-        position: Int
+    fun setShownGroup(
+        item: Any,
+        isShown: Boolean
     )
-}
 
-class ManageGroupManager : ManageGroupController {
+    fun setShownGroupAll(
+        items: ArrayList<Any>,
+        isShown: Boolean
+    )
 
-    override fun addGroup(group: Group) {
-        // Add group
-    }
+    fun setPinnedGroup(
+        item: Any,
+        isPinned: Boolean
+    )
 
-    override fun renameGroup(
-        group: Group,
-        name: String
-    ) {
-        // Rename group
-    }
+    fun changePinnedGroupPosition(
+        fromItem: Any,
+        toItem: Any,
+        fromPosition: Int,
+        toPosition: Int
+    )
 
-    override fun deleteGroup(group: Group) {
-        // Delete group
-    }
-
-    override fun moveGroup(
-        group: Group,
-        position: Int
-    ) {
-        // Reorder group
-    }
+    fun getPinnedIndex(item: Any): Int
 }
 ```
 
 **의도**
 
-- `ManageGroupController`를 통해 Group 관리 기능의 공통 역할 정의
-- Add / Rename / Delete / Reorder 책임을 명확하게 분리
-- UI에서 관리 로직의 구체적인 구현보다 Interface 기반 역할에 의존할 수 있도록 구성
-- 실제 서비스 코드는 공개하지 않고 담당 기능의 구조와 설계 방향만 표현
+- `ManageGroup` → Group 관리 기능의 역할 정의
+- `getViewModel()` → ViewModel과 기능 영역 연결
+- `ReqGroupGridData()` → Compose UI에서 Group Grid 데이터를 요청하고 Loading / Response 상태 연결
+- `setShownGroup()` / `setShownGroupAll()` → Group 표시 여부 관리
+- `setPinnedGroup()` → Pinned Group 상태 관리
+- `changePinnedGroupPosition()` → Pinned Group 순서 변경
+- `getPinnedIndex()` → Pinned 상태에서 현재 위치 확인
+
+> 위 Interface는 실제 서비스 코드의 구조를 바탕으로 포트폴리오용으로 공개한 예시이며, 실제 구현부와 서비스 고유 로직은 포함하지 않습니다.
 
 ---
 
@@ -185,25 +188,35 @@ Profile
 
 ---
 
-# Code Skeleton
+# 🏗️ Architecture & Implementation
 
-> 아래 코드는 실제 서비스 소스를 공개한 것이 아니라, **실제 담당 영역의 구조와 구현 방식을 보여주기 위해 재구성한 Skeleton**입니다.
+## 1. Home — Compose UI 구조
 
-## 1. Home — Compose UI
+Home은 기능별 UI를 Composable 단위로 분리하고, 사용자 이벤트는 callback을 통해 상위 화면 흐름으로 전달하는 구조로 구성했습니다.
 
 ```kotlin
+interface HomeScreenController {
+    fun getViewModel(): HomeViewModel
+    fun onLiveClick()
+}
+
+class HomeViewModel {
+    fun requestHomeData() {
+        // Home data request
+    }
+}
+
 @Composable
 fun HomeScreen(
     onLiveClick: () -> Unit
 ) {
     Column {
         Banner()
-        TrendingList()
-        LiveRecentList()
-        RecentContentList()
-        NoticeList()
+        Trending()
+        LiveRecent()
+        RecentContent()
+        Notice()
 
-        // Navigate to Live
         LiveButton(onClick = onLiveClick)
     }
 }
@@ -211,13 +224,16 @@ fun HomeScreen(
 
 **의도**
 
-- 화면을 기능별 Composable로 분리
-- 각 UI 영역의 책임을 명확하게 구성
-- 화면 이벤트와 Navigation을 callback으로 연결
+- Home 화면의 기능별 UI를 Composable로 분리
+- UI와 화면 이벤트를 callback으로 연결
+- Home → Live Navigation 흐름을 UI 이벤트와 분리
+- 실제 데이터 처리 및 서비스 로직은 공개하지 않고 UI 구조만 표현
 
 ---
 
-## 2. Live — UI State 연결
+## 2. Live — State / ViewModel / UI 구조
+
+Live는 Group → Channel → EPG로 이어지는 사용자 흐름을 상태와 이벤트로 표현했습니다.
 
 ```kotlin
 data class LiveUiState(
@@ -226,132 +242,196 @@ data class LiveUiState(
     val showEpg: Boolean = false
 )
 
+interface LiveScreenController {
+    fun getViewModel(): LiveViewModel
+    fun selectGroup(group: Group)
+    fun selectChannel(channel: Channel)
+}
+
+class LiveViewModel {
+    var uiState: LiveUiState = LiveUiState()
+        private set
+
+    fun selectGroup(group: Group) {
+        uiState = uiState.copy(selectedGroup = group)
+    }
+
+    fun selectChannel(channel: Channel) {
+        uiState = uiState.copy(selectedChannel = channel)
+    }
+}
+
 @Composable
 fun LiveScreen(
     state: LiveUiState,
     onGroupSelected: (Group) -> Unit,
     onChannelSelected: (Channel) -> Unit
 ) {
-    GroupList(
-        selectedGroup = state.selectedGroup,
-        onGroupSelected = onGroupSelected
-    )
-
-    ChannelList(
-        selectedChannel = state.selectedChannel,
-        onChannelSelected = onChannelSelected
-    )
+    GroupList(state.selectedGroup, onGroupSelected)
+    ChannelList(state.selectedChannel, onChannelSelected)
 
     if (state.showEpg) {
-        GridEpgScreen()
+        GridEpg()
+        EpgDetail()
     }
 }
 ```
 
 **의도**
 
-- UI가 직접 데이터를 관리하기보다 상태를 전달받아 화면을 구성
-- Group → Channel → EPG로 이어지는 사용자 흐름을 상태로 표현
-- 이벤트는 callback으로 분리하여 UI와 동작을 구분
+- `LiveUiState` → 현재 선택된 Group / Channel / EPG 상태 표현
+- `LiveViewModel` → 사용자 선택에 따른 상태 변경 담당
+- Compose UI → 상태를 전달받아 화면 구성
+- Callback → 사용자 이벤트와 상태 변경 흐름 연결
+- Group → Channel → EPG 탐색 흐름을 하나의 구조로 표현
 
 ---
 
-## 3. ManageGroup — Interface / 구현체 분리
+## 3. ManageGroup — Interface 기반 구조
 
-Group 관리 기능은 별도의 예제 파일에서도 확인할 수 있도록 분리했습니다.
-
-```text
-ManageGroupController
-          │
-          │ implements
-          ▼
-  ManageGroupManager
-          │
-     ┌────┼────┬──────┐
-     ▼    ▼    ▼      ▼
-    Add Rename Delete Reorder
-```
-
-- Interface → Group 관리 기능의 역할과 계약 정의
-- Implementation → 실제 상태 변경 및 관리 동작 구현
-- UI → Interface를 통해 Group 관리 동작 호출
-
-자세한 Skeleton은 [`examples/ManageGroupControllerExample.kt`](./examples/ManageGroupControllerExample.kt)에서 확인할 수 있습니다.
-
----
-
-## 4. Profile — 상태와 화면 흐름
+ManageGroup에서는 실제 코드에서 사용한 Interface 구조를 중심으로 Group 관리 기능의 역할을 표현했습니다.
 
 ```kotlin
-class ProfileManager {
+interface ManageGroup : TabModule {
 
-    private val profiles = mutableListOf<Profile>()
+    fun getViewModel(): ManageGroupViewModel
 
-    var selectedProfile: Profile? = null
+    @Composable
+    fun ReqGroupGridData(
+        onResponse: (ArrayList<GroupData>) -> Unit,
+        onLoading: (Boolean) -> Unit
+    )
+
+    fun getServerName(item: Any): String?
+    fun setShownGroup(item: Any, isShown: Boolean)
+    fun setShownGroupAll(items: ArrayList<Any>, isShown: Boolean)
+    fun setPinnedGroup(item: Any, isPinned: Boolean)
+
+    fun changePinnedGroupPosition(
+        fromItem: Any,
+        toItem: Any,
+        fromPosition: Int,
+        toPosition: Int
+    )
+
+    fun getPinnedIndex(item: Any): Int
+}
+```
+
+**의도**
+
+- Interface를 통해 Group 관리 영역의 역할과 책임을 정의
+- ViewModel과 Compose UI의 연결 구조 표현
+- Group Show / Hide 관리
+- Pinned Group 관리
+- Pinned Group 순서 변경 및 위치 확인
+- 실제 서비스의 내부 구현은 공개하지 않고 Interface 수준의 설계만 표현
+
+---
+
+## 4. Profile — 상태와 사용자 흐름
+
+Profile은 생성 → 선택 → 수정 → 삭제의 상태 변화를 하나의 흐름으로 관리하는 구조를 중심으로 구현했습니다.
+
+```kotlin
+interface ProfileController {
+    fun getViewModel(): ProfileViewModel
+    fun addProfile(profile: Profile)
+    fun selectProfile(profileId: String)
+    fun updateProfile(profile: Profile)
+    fun deleteProfile(profileId: String)
+}
+
+data class Profile(
+    val id: String,
+    val name: String,
+    val avatar: String
+)
+
+data class ProfileUiState(
+    val profiles: List<Profile> = emptyList(),
+    val selectedProfile: Profile? = null
+)
+
+class ProfileViewModel {
+    var uiState: ProfileUiState = ProfileUiState()
         private set
 
-    fun add(profile: Profile) {
-        profiles += profile
+    fun addProfile(profile: Profile) {
+        uiState = uiState.copy(
+            profiles = uiState.profiles + profile
+        )
     }
 
-    fun select(profile: Profile) {
-        selectedProfile = profile
+    fun selectProfile(profileId: String) {
+        uiState = uiState.copy(
+            selectedProfile = uiState.profiles.firstOrNull { it.id == profileId }
+        )
     }
 
-    fun update(profile: Profile) {
-        // Update profile state
+    fun updateProfile(profile: Profile) {
+        val profiles = uiState.profiles.map {
+            if (it.id == profile.id) profile else it
+        }
+
+        val selected = if (uiState.selectedProfile?.id == profile.id) {
+            profile
+        } else {
+            uiState.selectedProfile
+        }
+
+        uiState = uiState.copy(
+            profiles = profiles,
+            selectedProfile = selected
+        )
     }
 
-    fun delete(profile: Profile) {
-        profiles.remove(profile)
+    fun deleteProfile(profileId: String) {
+        uiState = uiState.copy(
+            profiles = uiState.profiles.filterNot { it.id == profileId },
+            selectedProfile = uiState.selectedProfile
+                ?.takeUnless { it.id == profileId }
+        )
     }
 }
 ```
 
 **의도**
 
-Profile 생성 → 선택 → 수정 → 삭제의 상태를 관리하고, 선택된 Profile이 관련 화면 흐름으로 이어지도록 구성하는 구조를 보여줍니다.
+- Profile 상태를 `ProfileUiState`로 관리
+- 생성 / 선택 / 수정 / 삭제 책임을 명확하게 분리
+- 선택된 Profile이 수정 또는 삭제될 때 상태를 함께 갱신
+- Profile 화면 간 사용자 흐름을 상태 기반으로 연결
+- 실제 서비스의 저장소 및 인증/보안 구현은 공개하지 않음
 
 ---
 
-# Architecture
-
-### Compose UI
+# 🔄 UI / State Flow
 
 ```text
-Composable Screen
-       ↓
-     UI State
-       ↓
-User Interaction
-       ↓
-Navigation / State Update
+                         MyTVOnline+
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+        Home                Live               Setting
+          │                   │
+          │                   ├─ Group
+          │                   ├─ Channel
+          │                   └─ EPG
+          │
+          └──────────────► Navigation
+                              │
+                              ▼
+                           Profile
+                              │
+                 ┌────────────┼────────────┐
+                 ▼            ▼            ▼
+                Add         Edit        Switch
+                 │            │            │
+                 └────────────┴────────────┘
+                              │
+                         UI State Update
 ```
-
-### 기능별 Navigation
-
-```text
-App
- ├─ Home
- ├─ Live
- │   ├─ Channel
- │   └─ EPG
- ├─ Setting
- └─ Profile
-     ├─ Add
-     ├─ Edit
-     └─ Switch
-```
-
-주요 기술:
-
-- Jetpack Compose
-- Material 3
-- ViewModel
-- StateFlow / Flow
-- Navigation
-- Adaptive UI
-- Kotlin / Java
 
 ---
 
@@ -367,7 +447,7 @@ Live와 Profile에서 화면 상태와 사용자 이벤트를 연결하여 화�
 
 ### Interface 기반 기능 구조
 
-ManageGroup 영역에서는 Group 관리 동작을 Interface로 정의하고 구현체에서 실제 동작을 분리하는 구조를 보여줍니다.
+ManageGroup 영역에서는 실제 기능에 필요한 역할을 Interface로 정의하고 ViewModel 및 UI와 연결되는 구조를 구성했습니다.
 
 ### Navigation
 
@@ -376,6 +456,19 @@ ManageGroup 영역에서는 Group 관리 동작을 Interface로 정의하고 구
 ### Adaptive UI
 
 다양한 화면 크기에서 사용할 수 있도록 화면 구성과 레이아웃을 대응시켰습니다.
+
+---
+
+# 🛠️ Tech Stack
+
+| Category | Technology |
+|---|---|
+| Language | Kotlin / Java |
+| Platform | Android |
+| UI | Jetpack Compose / Material 3 |
+| Architecture | ViewModel / StateFlow / Flow / Navigation |
+| Design | Interface / State-based UI / Component Reusability |
+| Key Point | UI Implementation / User Flow / Abstraction |
 
 ---
 
