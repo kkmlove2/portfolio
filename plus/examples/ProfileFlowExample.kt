@@ -1,29 +1,52 @@
-package examples
+package portfolio.plus.examples
 
-/** Reconstructed and simplified Profile flow example. */
-data class Profile(val id: String, val name: String, val avatar: String)
+/**
+ * MyTVOnline+ Profile 기능의 역할과 사용자 흐름을 설명하기 위해 재구성한 Skeleton입니다.
+ * 실제 서비스의 원본 코드가 아니며, Profile 상태와 주요 동작만 표현합니다.
+ */
+interface ProfileController {
+    fun getViewModel(): ProfileViewModel
+    fun addProfile(profile: Profile)
+    fun selectProfile(profileId: String)
+    fun updateProfile(profile: Profile)
+    fun deleteProfile(profileId: String)
+}
 
-class ProfileFlowExample {
-    private val profiles = mutableListOf<Profile>()
-    var selectedProfile: Profile? = null
+data class Profile(
+    val id: String,
+    val name: String,
+    val avatar: String,
+)
+
+data class ProfileUiState(
+    val profiles: List<Profile> = emptyList(),
+    val selectedProfile: Profile? = null,
+)
+
+class ProfileViewModel {
+    var uiState: ProfileUiState = ProfileUiState()
         private set
 
-    fun add(profile: Profile) {
-        profiles += profile
+    fun addProfile(profile: Profile) {
+        uiState = uiState.copy(profiles = uiState.profiles + profile)
     }
 
-    fun select(profileId: String) {
-        selectedProfile = profiles.firstOrNull { it.id == profileId }
+    fun selectProfile(profileId: String) {
+        uiState = uiState.copy(
+            selectedProfile = uiState.profiles.firstOrNull { it.id == profileId }
+        )
     }
 
-    fun update(profile: Profile) {
-        val index = profiles.indexOfFirst { it.id == profile.id }
-        if (index >= 0) profiles[index] = profile
-        if (selectedProfile?.id == profile.id) selectedProfile = profile
+    fun updateProfile(profile: Profile) {
+        val profiles = uiState.profiles.map { if (it.id == profile.id) profile else it }
+        val selected = if (uiState.selectedProfile?.id == profile.id) profile else uiState.selectedProfile
+        uiState = uiState.copy(profiles = profiles, selectedProfile = selected)
     }
 
-    fun delete(profileId: String) {
-        profiles.removeAll { it.id == profileId }
-        if (selectedProfile?.id == profileId) selectedProfile = null
+    fun deleteProfile(profileId: String) {
+        uiState = uiState.copy(
+            profiles = uiState.profiles.filterNot { it.id == profileId },
+            selectedProfile = uiState.selectedProfile?.takeUnless { it.id == profileId }
+        )
     }
 }
