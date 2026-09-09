@@ -262,49 +262,6 @@ class LiveData {
 
 이를 통해 Group이나 Playback 데이터가 변경될 때 이를 관찰하는 쪽에서 최신 상태를 받을 수 있도록 구성했습니다.
 
-### Grid EPG — 여러 상태를 StateFlow로 관리
-
-Grid EPG 영역에서는 단순 선택 상태뿐 아니라 채널 목록, 선택 날짜, 기준 날짜, 현재 시간, 로드된 날짜 수 등을 `MutableStateFlow`로 관리했습니다.
-
-```kotlin
-private val _channels = MutableStateFlow<List<Channel>>(emptyList())
-val channels = _channels.asStateFlow()
-
-private val _selectedDateMs: MutableStateFlow<Long>
-val selectedDateMs: StateFlow<Long>
-
-private val _baseDateMs: MutableStateFlow<Long>
-val baseDateMs: StateFlow<Long>
-
-private val _currentTimeMs: MutableStateFlow<Long>
-val currentTimeMs: StateFlow<Long>
-
-private val _loadedDayCount = MutableStateFlow(1)
-val loadedDayCount = _loadedDayCount.asStateFlow()
-```
-
-특히 현재 시간은 주기적으로 갱신하여 EPG Grid의 현재 시간선과 동기화하는 방식으로 구현했습니다.
-
-### TimeTickViewModel
-
-```kotlin
-class TimeTickViewModel : ViewModel() {
-    private val _timeTick = MutableStateFlow(System.currentTimeMillis())
-    val timeTick: StateFlow<Long> = _timeTick.asStateFlow()
-
-    init {
-        viewModelScope.launch(Dispatchers.Default) {
-            while (true) {
-                delay(60_000L)
-                _timeTick.value = System.currentTimeMillis()
-            }
-        }
-    }
-}
-```
-
-즉, `MutableStateFlow`는 포트폴리오에서 임의로 추가한 패턴이 아니라 **실제 Live / EPG 코드에서 사용한 상태 관리 방식**입니다.
-
 ---
 
 ## 3. Live — 사용자 선택 / 화면 흐름
@@ -316,6 +273,19 @@ interface LiveScreenController {
     fun getViewModel(): LiveViewModel
     fun selectGroup(group: Group)
     fun selectChannel(channel: Channel)
+}
+
+class LiveViewModel {
+    private var selectedGroup: Group? = null
+    private var selectedChannel: Channel? = null
+
+    fun selectGroup(group: Group) {
+        selectedGroup = group
+    }
+
+    fun selectChannel(channel: Channel) {
+        selectedChannel = channel
+    }
 }
 
 @Composable
@@ -468,7 +438,7 @@ StateFlow를 관찰하는 화면에 반영
 
 ### Reactive State 관리
 
-실제 코드에서 `MutableStateFlow`와 `StateFlow`를 활용하여 Live / EPG / Profile 등 화면에 필요한 상태를 관리하고 변경 사항을 관찰할 수 있도록 구성했습니다.
+실제 코드에서 `MutableStateFlow`와 `StateFlow`를 활용하여 Live / Profile 등 화면에 필요한 상태를 관리하고 변경 사항을 관찰할 수 있도록 구성했습니다.
 
 ### 사용자 흐름 구현
 
