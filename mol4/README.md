@@ -46,7 +46,7 @@ MOL4에서는 신규 서비스를 처음부터 개발하기보다 **기존 코�
 
 # 핵심 구조
 
-MOL4에서 보여주고 싶은 부분은 **기존 구조를 분석한 뒤 기능별 책임을 나누고, 상태 변경이 관련 UI에 이어지도록 연결한 경험**입니다.
+MOL4에서 보여주고 싶은 부분은 **기존 구조를 분석한 뒤 기능별 책임을 나누고, 기능 변경 결과가 관련 UI와 사용자 흐름에 이어지도록 연결한 경험**입니다.
 
 ```text
 Existing Code
@@ -55,7 +55,7 @@ Flow / Responsibility 분석
      ↓
 Feature 수정 및 확장
      ↓
-관련 UI / State 반영
+관련 UI / 데이터 반영
      ↓
 Bug Fix & Regression Check
 ```
@@ -86,7 +86,7 @@ Group Management
 
 > 아래 코드는 실제 서비스 소스를 공개한 것이 아니라, **실제 담당 영역의 구조와 설계 의도를 보여주기 위해 재구성한 Skeleton**입니다.
 
-### 1. Favorite Group — Interface 기반 관리
+### 1. Favorite Group — 관리 역할 분리
 
 ```kotlin
 interface FavoriteGroupController {
@@ -112,7 +112,7 @@ class FavoriteGroupManager : FavoriteGroupController {
     }
 
     override fun moveGroup(groupId: String, position: Int) {
-        // Reorder the group and reflect the change in the UI flow.
+        // Reorder the group and reflect the change in the related UI flow.
     }
 }
 ```
@@ -125,7 +125,7 @@ class FavoriteGroupManager : FavoriteGroupController {
 
 ---
 
-### 2. Pinned Group — 상태와 순서 관리
+### 2. Pinned Group — 상태 및 순서 변경 관리
 
 ```kotlin
 interface PinnedGroupController {
@@ -158,7 +158,7 @@ Pinned 상태 변경과 순서 변경을 하나의 관리 흐름으로 구성하
 
 ---
 
-### 3. Profile — 상태와 사용자 흐름
+### 3. Profile — 사용자 흐름
 
 ```kotlin
 data class Profile(
@@ -166,65 +166,49 @@ data class Profile(
     val name: String,
 )
 
-data class ProfileUiState(
-    val profiles: List<Profile> = emptyList(),
-    val selectedProfileId: String? = null,
-)
-
 class ProfileViewModel {
-    var uiState: ProfileUiState = ProfileUiState()
-        private set
+    private val profiles = mutableListOf<Profile>()
+    private var selectedProfileId: String? = null
 
     fun add(profile: Profile) {
-        uiState = uiState.copy(
-            profiles = uiState.profiles + profile,
-            selectedProfileId = uiState.selectedProfileId ?: profile.id,
-        )
+        profiles += profile
+        if (selectedProfileId == null) {
+            selectedProfileId = profile.id
+        }
     }
 
     fun select(profileId: String) {
-        if (uiState.profiles.any { it.id == profileId }) {
-            uiState = uiState.copy(selectedProfileId = profileId)
+        if (profiles.any { it.id == profileId }) {
+            selectedProfileId = profileId
         }
     }
 
     fun update(profile: Profile) {
-        uiState = uiState.copy(
-            profiles = uiState.profiles.map {
-                if (it.id == profile.id) profile else it
-            }
-        )
+        val index = profiles.indexOfFirst { it.id == profile.id }
+        if (index >= 0) {
+            profiles[index] = profile
+        }
     }
 
     fun delete(profileId: String) {
-        val profiles = uiState.profiles.filterNot { it.id == profileId }
-        val selected = uiState.selectedProfileId
-            ?.takeUnless { it == profileId }
-            ?: profiles.firstOrNull()?.id
+        profiles.removeAll { it.id == profileId }
 
-        uiState = uiState.copy(
-            profiles = profiles,
-            selectedProfileId = selected,
-        )
+        if (selectedProfileId == profileId) {
+            selectedProfileId = profiles.firstOrNull()?.id
+        }
     }
 }
 ```
 
 **의도**
 
-Profile 생성 → 선택 → 수정 → 삭제의 상태를 하나의 ViewModel 흐름으로 표현하고, 선택된 Profile 상태가 관련 화면으로 이어지는 구조를 보여줍니다.
+Profile 생성 → 선택 → 수정 → 삭제의 사용자 흐름을 ViewModel에서 관리하는 형태로 표현했습니다. 실제 서비스의 저장 구조나 고유 로직은 공개하지 않습니다.
 
 ---
 
-### 4. Live — 화면 상태와 사용자 흐름
+### 4. Live — 사용자 선택 흐름
 
 ```kotlin
-data class LiveUiState(
-    val selectedGroup: Group? = null,
-    val selectedChannel: Channel? = null,
-    val showEpg: Boolean = false,
-)
-
 interface LiveScreenController {
     fun getViewModel(): LiveViewModel
     fun selectGroup(group: Group)
@@ -232,40 +216,23 @@ interface LiveScreenController {
 }
 
 class LiveViewModel {
-    var uiState: LiveUiState = LiveUiState()
-        private set
+    private var selectedGroup: Group? = null
+    private var selectedChannel: Channel? = null
 
     fun selectGroup(group: Group) {
-        uiState = uiState.copy(selectedGroup = group)
+        selectedGroup = group
     }
 
     fun selectChannel(channel: Channel) {
-        uiState = uiState.copy(selectedChannel = channel)
-    }
-}
-```
-
-```kotlin
-@Composable
-fun LiveScreen(
-    state: LiveUiState,
-    onGroupSelected: (Group) -> Unit,
-    onChannelSelected: (Channel) -> Unit,
-) {
-    GroupList(state.selectedGroup, onGroupSelected)
-    ChannelList(state.selectedChannel, onChannelSelected)
-
-    if (state.showEpg) {
-        GridEpg()
-        EpgDetail()
+        selectedChannel = channel
     }
 }
 ```
 
 **의도**
 
-- Group → Channel → EPG로 이어지는 Live 탐색 흐름을 상태로 표현
-- UI와 상태 변경 역할을 분리
+- Group → Channel → EPG로 이어지는 Live 탐색 흐름을 표현
+- 사용자 선택과 화면 동작의 역할을 분리
 - Android TV에서 D-pad로 탐색하는 화면 흐름을 고려
 
 ---
@@ -281,7 +248,7 @@ Focus 이동
      ↓
 Group / Channel 선택
      ↓
-상태 변경
+관련 데이터 / UI 변경
      ↓
 목록 / 화면 갱신
      ↓
@@ -327,11 +294,11 @@ Bug Fix / 동작 검증
 
 ### 책임 분리
 
-Group 관리, Profile 상태, Live UI 등 기능별 책임을 분리하고 변경이 필요한 영역을 명확하게 구성했습니다.
+Group 관리, Profile, Live 등 기능별 책임을 분리하고 변경이 필요한 영역을 명확하게 구성했습니다.
 
-### 상태 기반 사용자 흐름
+### 사용자 흐름 구현
 
-Group / Channel / EPG와 Profile처럼 상태 변화가 다음 화면과 연결되는 기능을 구현했습니다.
+Group / Channel / EPG와 Profile처럼 사용자 선택과 변경이 다음 화면과 연결되는 기능을 구현했습니다.
 
 ### Android TV UX
 
