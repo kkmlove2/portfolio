@@ -141,11 +141,3 @@ portfolio/
 ```
 
 각 프로젝트는 별도의 README에서 담당 범위와 핵심 구현 내용을 확인할 수 있습니다.
-
----
-
-# 📌 Portfolio Summary
-
-> **Android / Android TV 환경에서 UI 구현부터 기존 서비스 유지보수, 공통화와 추상화, 복잡한 사용자 흐름 구현까지 경험했습니다.**
->
-> 특히 Android TV에서는 **D-pad / Focus 기반 UI**, **Live / Group 관리**, **Profile UI**, **Launcher UI**를 경험했고, Android 프로젝트에서는 **Jetpack Compose 기반 Home / Setting UI와 Profile 흐름**을 구현했습니다.
