@@ -12,8 +12,9 @@ MyTVOnline+에서는 **Jetpack Compose 기반 UI 구현과 화면 간 사용자 
 - Live → Channel / Group / EPG 탐색 UI
 - Setting → UI 구현 중심
 - Profile → `profile/` 폴더 내 구현
+- InAppPip → Live 화면에서 사용하는 Mini Player UI / 동작 구현
 
-VOD, Search, TV Series, Player 및 Member / Account 관련 기능은 담당 범위에서 제외했습니다.
+VOD, Search, TV Series, Player 자체 구현 및 Member / Account 관련 기능은 담당 범위에서 제외했습니다.
 
 ---
 
@@ -59,8 +60,9 @@ Live에서는 채널과 Group을 탐색하고 EPG 정보를 확인할 수 있는
 - Channel Logo UI
 - Live History 관련 화면
 - Sport Mode 관련 UI / 상태
+- InAppPip Mini Player UI / 사용자 조작
 
-Player 자체 구현은 담당 범위에서 제외했습니다.
+Player 자체 구현은 담당 범위에서 제외했으며, **Live 화면에서 동작하는 InAppPip 기능은 별도 기능으로 정리했습니다.**
 
 ### 화면 흐름
 
@@ -74,6 +76,11 @@ Channel List
 EPG 확인
   ↓
 Program Detail
+  ↓
+InAppPip
+  ├─ Move / Resize
+  ├─ Corner Snap
+  └─ Full Screen / Play / Mute / Close
 ```
 
 ### ManageGroup — Interface 기반 구조
@@ -133,6 +140,239 @@ interface ManageGroup : TabModule {
 - `getPinnedIndex()` → Pinned 상태에서 현재 위치 확인
 
 > 위 Interface는 실제 서비스 코드의 구조를 바탕으로 포트폴리오용으로 공개한 예시이며, 실제 구현부와 서비스 고유 로직은 포함하지 않습니다.
+
+---
+
+## InAppPip — Live 화면 내 Mini Player
+
+InAppPip는 Live 화면 위에서 영상을 작은 Player 형태로 유지하면서 다른 UI를 탐색할 수 있도록 만든 **In-App Picture-in-Picture 형태의 UI 기능**입니다.
+
+실제 코드에서는 단순히 작은 Player를 표시하는 것에 그치지 않고, **크기 / 위치 / 화면 크기 변화 / Drag / Fling / Corner Snap / Animation / Control UI**를 하나의 기능으로 관리했습니다.
+
+### 주요 기능
+
+- InAppPip Enable / Disable
+- 16:9 영상 비율 유지
+- 최소 Player 크기 계산
+- 화면 크기 변화에 따른 위치 재계산
+- Drag를 통한 위치 이동
+- Fling 방향에 따른 Corner Snap
+- 세로 / 가로 Fling threshold 분리
+- Zoom / Resize
+- Bottom Navigation 영역을 고려한 최대 위치 계산
+- Enable / Disable Animation
+- Play / Pause / Mute / Full Screen / Close Control UI
+
+### InAppPip 상태 구조
+
+`InAppPip`에서는 실제 코드에서 `MutableStateFlow`를 이용해 화면에 필요한 상태를 관리합니다.
+
+```kotlin
+class InAppPip(
+    density: Density,
+    displayShorterSide: Dp,
+    bottomBarHeight: Int
+) {
+    private val _screen: MutableStateFlow<Size> =
+        MutableStateFlow(Size(0f, 0f))
+    val screen = _screen.asStateFlow()
+
+    private val _scale: MutableStateFlow<Float> =
+        MutableStateFlow(1f)
+    val scale = _scale.asStateFlow()
+
+    private val _enabled: MutableStateFlow<Boolean> =
+        MutableStateFlow(false)
+    val enabled = _enabled.asStateFlow()
+
+    fun enable(rate: Float = 1f) {
+        _enabled.value = true
+        animate(true, rate)
+    }
+
+    fun disable(withAnim: Boolean, rate: Float = 1f) {
+        _enabled.value = false
+
+        if (withAnim) {
+            animate(false, rate)
+        } else {
+            disableImmediately()
+        }
+    }
+}
+```
+
+### 위치 상태와 Drag / Fling 처리
+
+PIP 위치는 별도의 `Position` Interface와 내부 구현체에서 `StateFlow`로 노출하고, 이동과 Corner Snap을 분리해서 처리합니다.
+
+```kotlin
+interface Position {
+    val x: StateFlow<Float>
+    val y: StateFlow<Float>
+
+    fun addY(y: Float)
+    fun setY(y: Float)
+}
+```
+
+사용자가 Drag하면 화면 영역 안에서 위치를 제한하고, Fling이 발생하면 속도에 따라 가까운 Corner로 이동합니다.
+
+```kotlin
+fun move(offset: Offset) {
+    val maxPosition = getMaxPositionVariable()
+
+    _position.set(
+        x = getSafePosition(
+            _position.x.value,
+            offset.x,
+            pipMarginPx,
+            maxPosition.x
+        ),
+        y = getSafePosition(
+            _position.y.value,
+            offset.y,
+            pipMarginPx,
+            maxPosition.y
+        )
+    )
+}
+```
+
+```text
+Drag
+  ↓
+현재 위치 + Offset
+  ↓
+Container 영역 내 위치 보정
+  ↓
+PIP 위치 변경
+
+Fling
+  ↓
+Velocity 분석
+  ↓
+Horizontal / Vertical 방향 판단
+  ↓
+가까운 Corner 계산
+  ↓
+Animation으로 Corner Snap
+```
+
+특히 실제 코드에서는 세로 방향으로 빠르게 Drag하는 상황에서도 X velocity가 함께 크게 들어올 수 있는 문제를 고려하여, **Y velocity가 큰 경우 X 방향 threshold를 별도로 높이는 방식**으로 Corner Snap 동작을 보정했습니다.
+
+### 화면 크기 / 비율 대응
+
+PIP 크기는 16:9 비율을 기준으로 계산하며, 화면의 짧은 변과 Container 크기, Bottom Navigation 높이를 함께 고려하여 최소 크기와 최대 위치를 계산합니다.
+
+```kotlin
+companion object {
+    const val PIP_MARGIN_DP = 10
+
+    fun toPlayerViewHeight(width: Float): Float =
+        width / 16 * 9
+
+    fun toPlayerViewWidth(height: Float): Float =
+        height * 16 / 9
+}
+```
+
+Container 크기가 변경되는 경우에는 기존 PIP 위치를 비율로 변환한 뒤 새로운 화면 크기에 맞춰 다시 위치를 계산합니다.
+
+```text
+기존 Container Size
+       ↓
+현재 PIP 위치를 비율로 계산
+       ↓
+Container Size 변경
+       ↓
+새로운 최대 위치 계산
+       ↓
+기존 위치 비율 유지
+       ↓
+PIP 위치 재배치
+```
+
+이를 통해 Tablet Portrait / Landscape 전환이나 화면 크기 변화와 같은 상황에서도 PIP가 화면 밖으로 벗어나지 않도록 처리했습니다.
+
+### Animation
+
+InAppPip의 Enable / Disable 및 Corner 이동에는 별도의 `Animator`를 사용했습니다.
+
+`Animator`에서는 위치뿐 아니라 Player의 Width / Height까지 함께 애니메이션하여 **PIP 진입 / 종료 시 크기와 위치가 동시에 자연스럽게 변경**되도록 구성했습니다.
+
+```kotlin
+fun start(
+    fromPosition: Offset,
+    fromSize: SizeF,
+    toPosition: Offset,
+    toSize: SizeF,
+    rate: Float,
+    update: (x: Float, y: Float, width: Float, height: Float) -> Unit,
+    onEnd: () -> Unit,
+) {
+    setValues(
+        PropertyValuesHolder.ofFloat(X, fromPosition.x, toPosition.x),
+        PropertyValuesHolder.ofFloat(Y, fromPosition.y, toPosition.y),
+        PropertyValuesHolder.ofFloat(WIDTH, fromSize.width, toSize.width),
+        PropertyValuesHolder.ofFloat(HEIGHT, fromSize.height, toSize.height)
+    )
+
+    duration = (ANIM_DURATION.toFloat() * rate).toLong()
+    // ...
+}
+```
+
+### InAppPip Control UI
+
+Control UI는 Compose로 구성하고, PIP 위에서 필요한 사용자 동작을 callback으로 전달하도록 구현했습니다.
+
+```kotlin
+@Composable
+fun InAppPipControlUiScreen(
+    playButtonState: PipPlayBtnState,
+    isMuted: Boolean,
+    onFullScreen: () -> Unit,
+    onPlayClick: () -> Unit,
+    onMuteClick: () -> Unit,
+    onClose: () -> Unit
+) {
+    // Full Screen / Play / Mute / Close
+}
+```
+
+- PIP 화면 Tap → Full Screen
+- Close → PIP 종료
+- Play / Pause → 재생 상태에 따른 버튼 표시
+- Mute → 음소거 상태에 따른 아이콘 변경
+
+### InAppPip 구조
+
+```text
+                    InAppPip
+                        │
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+       Position       Screen        Scale
+       StateFlow      StateFlow     StateFlow
+          │             │             │
+          └─────────────┼─────────────┘
+                        ▼
+                  PIP Layout/UI
+                        │
+             ┌──────────┼──────────┐
+             ▼          ▼          ▼
+           Drag       Resize     Fling
+                        │          │
+                        └────┬─────┘
+                             ▼
+                       Corner Snap
+                             │
+                             ▼
+                          Animator
+```
+
+> InAppPip는 실제 `plus/live/player/inapppip/` 코드의 구조를 바탕으로 정리했으며, Player 자체 구현이나 서비스 고유 로직은 공개하지 않고 PIP 기능의 UI / 상태 / 사용자 입력 / 위치 계산 구조를 중심으로 표현했습니다.
 
 ---
 
@@ -412,7 +652,8 @@ StateFlow를 관찰하는 화면에 반영
           │                   │
           │                   ├─ Group
           │                   ├─ Channel
-          │                   └─ EPG
+          │                   ├─ EPG
+          │                   └─ InAppPip
           │
           └──────────────► Navigation
                               │
@@ -438,15 +679,19 @@ StateFlow를 관찰하는 화면에 반영
 
 ### Reactive State 관리
 
-실제 코드에서 `MutableStateFlow`와 `StateFlow`를 활용하여 Live / Profile 등 화면에 필요한 상태를 관리하고 변경 사항을 관찰할 수 있도록 구성했습니다.
+실제 코드에서 `MutableStateFlow`와 `StateFlow`를 활용하여 Live / Profile / InAppPip 등 화면에 필요한 상태를 관리하고 변경 사항을 관찰할 수 있도록 구성했습니다.
 
 ### 사용자 흐름 구현
 
-Live와 Profile에서 사용자 선택과 이벤트를 연결하여 화면 흐름을 구성했습니다.
+Live와 Profile에서 사용자 선택과 이벤트를 연결하고, InAppPip에서는 Drag / Fling / Full Screen / Close 등의 사용자 동작을 연결하여 화면 흐름을 구성했습니다.
 
 ### Interface 기반 기능 구조
 
 ManageGroup 영역에서는 실제 기능에 필요한 역할을 Interface로 정의하고 ViewModel 및 UI와 연결되는 구조를 구성했습니다.
+
+### UI Interaction
+
+InAppPip에서 Drag, Fling, Resize, Corner Snap, Animation을 조합하여 작은 화면에서도 자연스럽게 조작할 수 있는 UI Interaction을 구현했습니다.
 
 ### Navigation
 
@@ -468,8 +713,9 @@ ManageGroup 영역에서는 실제 기능에 필요한 역할을 Interface로 �
 | Architecture | ViewModel / Navigation |
 | State | MutableStateFlow / StateFlow / Flow |
 | Async | Kotlin Coroutines |
+| UI Interaction | Drag / Fling / Resize / Animation |
 | Design | Interface / Callback / Component Reusability |
-| Key Point | UI Implementation / User Flow / State Management / Abstraction |
+| Key Point | UI Implementation / User Flow / State Management / UI Interaction / Abstraction |
 
 ---
 
@@ -480,10 +726,18 @@ ManageGroup 영역에서는 실제 기능에 필요한 역할을 Interface로 �
 - VOD
 - Search
 - TV Series
-- Player
+- Player 자체 구현
 - Member / Account
 - `member/` 패키지
 - `UserMgr`
 - 기타 담당하지 않은 기능 및 모듈
 
-> Profile은 **`profile/` 폴더 내 구현만** 담당 범위로 포함했습니다.
+> Profile은 **`profile/` 폴더 내 구현만** 포함하며, InAppPip는 Player 전체 구현이 아닌 **`plus/live/player/inapppip/` 영역의 기능 구조와 UI / Interaction 구현**을 별도로 정리했습니다.
+
+---
+
+# 📌 Portfolio Note
+
+실제 서비스 소스 전체를 공개하는 대신, 포트폴리오에서는 **담당 영역의 구조와 구현 방식이 드러나는 코드 Skeleton / Interface / StateFlow 예시**를 중심으로 정리했습니다.
+
+서비스 고유 데이터, 내부 비즈니스 로직, 계정 및 Player 핵심 구현은 공개하지 않습니다.
