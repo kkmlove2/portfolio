@@ -28,7 +28,7 @@ Android TV Launcher 환경에서 공통 UI 구조를 추상화하고 재사용�
 
 **Android TV Application / Maintenance & Feature Improvement**
 
-기존 Android TV 애플리케이션을 유지보수하면서 Live, Group, Server, Profile 영역을 중심으로 UI와 관리 기능을 개선한 프로젝트입니다.
+기존 Android TV 애플리케이션을 유지보수하면서 Live, Group, Server, Profile 영역을 중심으로 UI와 관리 기능을 개선하고, REST API 기반 CloudSync 기능을 구현한 프로젝트입니다.
 
 **Key Points**
 - 기존 기능 유지보수 및 버그 수정
@@ -38,6 +38,7 @@ Android TV Launcher 환경에서 공통 UI 구조를 추상화하고 재사용�
 - Favorite Group / Channel
 - Pinned Group
 - Profile UI 전체
+- CloudSync — REST API 연동 서버 · 프로필 동기화
 - Android TV D-pad / Focus UX
 
 👉 **[MOL4 상세 보기](./mol4/)**
@@ -90,6 +91,7 @@ Home과 Setting은 UI 구현을 중심으로 담당하고, Live 및 Profile 영�
 | **UI** | Jetpack Compose · RecyclerView · Fragment · Material 3 |
 | **TV UX** | D-pad · Focus · Focus Animation · TV Launcher UI |
 | **Architecture** | ViewModel · StateFlow / Flow · Navigation · Hilt |
+| **Network** | REST API · OkHttp · Gson · Coroutines |
 | **OOP / Design** | Interface · Abstract Class · Inheritance · Polymorphism |
 | **Code Quality** | Abstraction · Reusability · Separation of Responsibility |
 | **Maintenance** | 기존 코드 분석 · 기능 개선 · Bug Fix · UI 개선 |

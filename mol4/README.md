@@ -1,6 +1,6 @@
 # MOL4 — Android TV Maintenance & Feature Improvement
 
-> 기존 Android TV 애플리케이션을 유지보수하면서 **Live UI, Group / Server 관리, Favorite / Pinned Group, Profile UI**를 중심으로 기능과 화면을 개선한 프로젝트입니다.
+> 기존 Android TV 애플리케이션을 유지보수하면서 **Live UI, Group / Server 관리, Favorite / Pinned Group, Profile UI**를 중심으로 기능과 화면을 개선하고, **REST API 기반 CloudSync(서버 · 프로필 동기화)** 기능을 구현한 프로젝트입니다.
 
 ---
 
@@ -42,6 +42,15 @@ MOL4에서는 신규 서비스를 처음부터 개발하기보다 **기존 코�
 - Sensitive Content 설정
 - Profile Management 화면
 
+### CloudSync (REST API 연동)
+- 클라우드 데이터와 기기 데이터를 비교하는 단계별 동기화 UI
+- 비교 → 서버 선택 → 결과 검토 → 프로필 선택 → 최종 검토 → 진행 → 결과 흐름 구현
+- ViewModel + StateFlow 기반 단계 상태 관리 및 Back 이력 처리
+- CloudSync REST API(GET / POST / DELETE)를 Coroutine으로 호출해 서버 · 프로필 조회 / 업로드 / 삭제
+- 선택 결과로 업로드 · 다운로드 · 삭제 대상을 계산해 실제 동기화 적용
+- 클라우드에서 받은 서버를 기기에 등록하고 서버 연결까지 진행
+- 동기화 진행률 표시 및 성공 / 실패 결과 화면
+
 ---
 
 # 핵심 구조
@@ -78,6 +87,28 @@ Group Management
              └── Reorder
                     ↓
              Live Group / Channel List
+```
+
+### CloudSync
+
+```text
+CloudSync REST API              Device (Local DB)
+  ├── Account Items (Server)      ├── Server
+  └── Profile / Profile Items     └── Profile
+            │                          │
+            └──────────┬───────────────┘
+                       ↓
+          Compare (Cloud vs Device)
+                       ↓
+      Server Selection → Review → Profile Selection
+                       ↓
+                 Final Review
+                       ↓
+     Sync Plan (Upload / Download / Remove 계산)
+                       ↓
+     Apply Sync (REST API 호출 + Local DB 반영)
+                       ↓
+              Progress → Result
 ```
 
 ---
@@ -237,6 +268,118 @@ class LiveViewModel {
 
 ---
 
+### 5. CloudSync — 단계별 흐름과 StateFlow
+
+```kotlin
+enum class CloudSyncStep {
+    COMPARE, SERVER_SELECTION, REVIEW, PROFILE_SELECTION, FINAL_REVIEW;
+
+    val next: CloudSyncStep?
+        get() = entries.getOrNull(ordinal + 1)
+}
+
+data class StepUiState(
+    val step: CloudSyncStep,
+    val items: List<CloudSyncData>,
+)
+
+class CloudSyncViewModel : ViewModel() {
+    private val history = ArrayList<CloudSyncStep>()
+
+    private val _uiState = MutableStateFlow(stateOf(CloudSyncStep.COMPARE))
+    val uiState: StateFlow<StepUiState> = _uiState.asStateFlow()
+
+    fun next() {
+        val next = uiState.value.step.next ?: return
+        history.add(uiState.value.step)
+        _uiState.value = stateOf(next)
+    }
+
+    fun back(): Boolean {
+        val prev = history.removeLastOrNull() ?: return false
+        _uiState.value = stateOf(prev)
+        return true
+    }
+
+    private fun stateOf(step: CloudSyncStep) =
+        StepUiState(step, buildDisplayList(step))
+}
+```
+
+**의도**
+
+- 동기화 단계를 enum으로 정의하고 단계별 화면 구성을 ViewModel에서 결정
+- 단계 이동 이력을 관리해 Back 시 이전 단계로 복귀
+- Fragment는 `uiState`만 구독해 현재 단계의 목록을 그리도록 역할 분리
+
+---
+
+### 6. CloudSync — Sync Plan 계산
+
+```kotlin
+class SyncPlan(
+    val cloudIds: Set<Int>,
+    val deviceIds: Set<Int>,
+    val selectedIds: Set<Int>,
+) {
+    // 선택하지 않은 항목 → 클라우드 / 기기 모두 삭제
+    val removeIds get() = (cloudIds + deviceIds) - selectedIds
+
+    // 선택했지만 클라우드에 없음 → 클라우드에 업로드
+    val uploadIds get() = selectedIds - cloudIds
+
+    // 선택했지만 기기에 없음 → 기기에 등록
+    val downloadIds get() = selectedIds.intersect(cloudIds) - deviceIds
+}
+```
+
+**의도**
+
+- 사용자의 선택 결과만으로 업로드 / 다운로드 / 삭제 대상을 집합 연산으로 계산
+- 서버와 프로필에 같은 규칙을 적용해 동기화 정책을 한 곳에서 관리
+
+---
+
+### 7. CloudSync — REST API 호출과 동기화 적용
+
+```kotlin
+interface CloudSyncApi {
+    suspend fun getAccountItems(): Map<String, List<Map<String, Any?>>>   // GET
+    suspend fun setAccountItem(name: String, json: String): String         // POST
+    suspend fun deleteAccountItem(name: String, key: String): String       // DELETE
+    suspend fun getProfile(profileUid: String): ProfileInfo               // GET
+    suspend fun deleteProfile(profileUid: String): String                  // DELETE
+}
+
+suspend fun applySync(plan: SyncPlan, onProgress: (Int) -> Unit): Boolean {
+    val tasks = buildTasks(plan)   // remove / upload / download
+    var done = 0
+    var isSuccess = true
+
+    tasks.forEach { task ->
+        try {
+            withContext(Dispatchers.IO) { task.run() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            isSuccess = false
+            // 실패한 항목은 기록하고 다음 항목을 계속 진행
+        }
+        onProgress(++done * 100 / tasks.size)
+    }
+    return isSuccess
+}
+```
+
+**의도**
+
+- REST API 호출을 `suspend` 함수로 감싸 Coroutine 흐름 안에서 순차 처리
+- 항목 하나가 실패해도 전체 동기화를 멈추지 않고 진행률을 갱신
+- 취소(CancellationException)는 삼키지 않고 그대로 전달
+- 결과에 따라 성공 / 실패 결과 화면으로 이동
+
+---
+
 # Android TV UX
 
 일반 모바일 UI와 달리 Android TV에서는 **D-pad / Focus / 선택 상태**가 사용자 경험에 직접적인 영향을 줍니다.
@@ -304,6 +447,10 @@ Group / Channel / EPG와 Profile처럼 사용자 선택과 변경이 다음 화�
 
 D-pad, Focus, Grid / List 탐색을 고려하여 TV 환경에서 자연스러운 사용자 흐름을 구현했습니다.
 
+### REST API 연동
+
+CloudSync REST API로 클라우드의 서버 · 프로필 데이터를 조회 / 업로드 / 삭제하고, 그 결과를 Local DB와 앱 화면에 반영하는 동기화 흐름을 구현했습니다.
+
 ---
 
 # Tech Stack
@@ -315,6 +462,9 @@ D-pad, Focus, Grid / List 탐색을 고려하여 TV 환경에서 자연스러운
 | UI | Android View, RecyclerView, Fragment, Custom View |
 | TV UX | D-pad, Focus, Focus Animation |
 | Structure | Interface, Adapter, Presenter, Fragment, Dialog |
+| Architecture | ViewModel, StateFlow, Hilt |
+| Network | REST API, OkHttp, Gson |
+| Async | Kotlin Coroutines |
 | Development | Maintenance, Bug Fix, UI Improvement |
 
 ---
@@ -328,6 +478,7 @@ D-pad, Focus, Grid / List 탐색을 고려하여 TV 환경에서 자연스러운
 | **Channel** | Favorite Channel 및 목록 UI |
 | **Server** | Server 관리 UI 및 관련 화면 유지보수 |
 | **Profile** | Profile UI 전체 흐름 |
+| **CloudSync** | REST API 연동 서버 · 프로필 동기화 흐름 및 UI |
 | **TV UX** | D-pad / Focus 기반 UI 개선 |
 | **Maintenance** | 기존 기능 수정 / Bug Fix / 사용자 흐름 개선 |
 
